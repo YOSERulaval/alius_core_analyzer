@@ -11,6 +11,9 @@ D'abord, l'application gère le formatage des images:
   2. Cropping
   3. Export en amont dans le pipeline
 
+  ![Untitled Diagram drawio](https://github.com/user-attachments/assets/521b411c-84ac-432d-855a-0d960b540e3f)
+
+
 ## Core Analyzer
 Utilisation des images ''préparées'' pour débuter l'analyse des cores:
   1. Séparation en catégories
