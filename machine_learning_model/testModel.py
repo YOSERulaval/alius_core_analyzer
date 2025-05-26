@@ -52,9 +52,10 @@ dataset_dicts = tm.load_coco_json(val_ds_path, "datasets/val", "my_dataset_val")
 for d in tm.random.sample(dataset_dicts, 3): # Tester le modèle avec 3 images
     im = tm.cv2.imread(d["file_name"])
     outputs = predictor(im)  # format is documented at https://detectron2.readthedocs.io/tutorials/models.html#model-output-format
+
     v = tm.Visualizer(im[:, :, ::-1],
                        metadata=core_val_metadata,
-                       scale=0.3,
+                       scale=0.2,
                        instance_mode=ColorMode.IMAGE_BW  # remove the colors of unsegmented pixels. This option is only available for segmentation models
                        )
     out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
