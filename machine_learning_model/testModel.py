@@ -21,7 +21,7 @@ from detectron2.data.datasets import register_coco_instances, load_coco_json
 # Inference should use the config with parameters that are used in training
 # cfg now already contains everything we've set previously. We changed it a little bit for inference:
 tm.cfg.MODEL.WEIGHTS = tm.os.path.join(tm.cfg.OUTPUT_DIR, "model_final.pth")  # path to the model we just trained
-tm.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5   # set a custom testing threshold
+tm.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7   # set a custom testing threshold
 predictor = tm.DefaultPredictor(tm.cfg)
 
 # Paths des datasets
