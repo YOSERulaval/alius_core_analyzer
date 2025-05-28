@@ -10,8 +10,9 @@ class ModelPredictor:
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
-        #self.cfg.MODEL.WEIGHTS = os.path.join(self.cfg.OUTPUT_DIR, "model_final.pth")
-        self.cfg.MODEL.WEIGHTS = "machine_learning_model/output/model_final.pth" # TODO Remettre dynamique
+
+        current_dir = os.path.dirname(os.path.abspath(__file__)) # On prend le chemin absolu du output
+        self.cfg.MODEL.WEIGHTS = os.path.join(current_dir, self.cfg.OUTPUT_DIR, "model_final.pth")
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh
         self.cfg.MODEL.DEVICE = device
         self.predictor = DefaultPredictor(self.cfg)
@@ -22,10 +23,12 @@ class ModelPredictor:
         img = cv2.imread(image_path)
         outputs = self.predictor(img)
 
+        # Extraction des classes utiles pour nos calculs
         instances = outputs["instances"]
-        masks = instances.pred_masks.cpu().numpy()
-        classes = instances.pred_classes.cpu().numpy()
+        masks = instances.pred_masks.cpu().numpy() # Ce que la machine a prédit
+        classes = instances.pred_classes.cpu().numpy() # Ce que nous avons défini comme classe
 
+        # Calculs pour le ratio d'aire, pour tests seulement
         class_names = ["cz", "core_empty_or_broken", "core_full"]
         areas = {"cz": 0, "core_empty_or_broken": 0, "core_full": 0}
 
@@ -38,13 +41,13 @@ class ModelPredictor:
         ratio = (areas["core_empty_or_broken"] / areas["core_full"]) * 100
 
         # Pour visualiser la prédiction faite sur l'image test (avant le calcul)
-        v = Visualizer(img[:, :, ::-1], scale=0.2, instance_mode=ColorMode.IMAGE_BW)
+        v = Visualizer(img[:, :, ::-1], scale=0.35, instance_mode=ColorMode.IMAGE_BW)
         out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
         cv2.imshow(image_name, out.get_image()[:, :, ::-1])
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-        return areas, ratio, image_name
+        return class_names, areas, ratio, image_name
 
 
 """
