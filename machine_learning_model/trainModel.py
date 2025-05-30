@@ -1,5 +1,5 @@
 import os, json, cv2, random
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True" #segmenter la mémoire, sinon ça crash ! Pas trop sûr de bien comprendre ce bout encore (ça vient de chatGPT)
 import tensorboard
 import torch, detectron2
 
@@ -36,7 +36,7 @@ class ModelTrainer:
         self.cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = roihead_batch_size
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
 
-        # Légende des paramètres
+        # Légende des paramètres :
         """
         ===============================================================================
         Légende des paramètres, tiré du tutoriel de detectron2, disponible sur collab :
@@ -52,10 +52,10 @@ class ModelTrainer:
         """
 
     def begin_training(self, coco_path, dataset_path, model_name):
-        # Assignations des méta-données à un dataset
+        # Assignations des méta-données à un dataset dynamiquement
         register_coco_instances("my_dataset_train", {}, coco_path, dataset_path)
 
-        # On cherche (et trouve) le sous fichier "trained_models"
+        # On cherche (et trouve) le sous fichier "trained_models", sinon on le créé
         root_dir = os.path.dirname(os.path.abspath(__file__))
         models_dir = os.path.join(root_dir, "trained_models")
         output_dir = os.path.join(models_dir, model_name)
@@ -67,8 +67,6 @@ class ModelTrainer:
         trainer = DefaultTrainer(self.cfg)
         trainer.resume_or_load(resume=False)
         trainer.train()
-
-
 
 """
 # Paths des datasets
