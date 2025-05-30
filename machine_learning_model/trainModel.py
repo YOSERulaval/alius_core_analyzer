@@ -1,10 +1,10 @@
-#TODO Mettre OO
+import os, json, cv2, random
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import tensorboard
 import torch, detectron2
 
 # import some common libraries
 import numpy as np
-import os, json, cv2, random
 import tkinter as tk
 from tkinter import filedialog
 from PIL import Image
@@ -54,9 +54,16 @@ class ModelTrainer:
     def begin_training(self, coco_path, dataset_path, model_name):
         # Assignations des méta-données à un dataset
         register_coco_instances("my_dataset_train", {}, coco_path, dataset_path)
-        self.cfg.OUTPUT_DIR = model_name
 
-        os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=True)
+        # On cherche (et trouve) le sous fichier "trained_models"
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        models_dir = os.path.join(root_dir, "trained_models")
+        output_dir = os.path.join(models_dir, model_name)
+
+        self.cfg.OUTPUT_DIR = output_dir # Assignation de ce path au modèle qui sera entrainé
+
+        os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=False)
+
         trainer = DefaultTrainer(self.cfg)
         trainer.resume_or_load(resume=False)
         trainer.train()

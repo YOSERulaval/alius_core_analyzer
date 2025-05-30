@@ -6,15 +6,23 @@ import os, cv2
 from detectron2.utils.visualizer import Visualizer, ColorMode
 
 class ModelPredictor:
-    def __init__(self, device='cpu', num_classes=3, confidence_thresh=0.7):
+    def __init__(self, confidence_thresh=0.7, model_dir=''):
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
+        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3
 
-        current_dir = os.path.dirname(os.path.abspath(__file__)) # On prend le chemin absolu du output
-        self.cfg.MODEL.WEIGHTS = os.path.join(current_dir, self.cfg.OUTPUT_DIR, "model_final.pth")
+        if model_dir:
+            weights_path = os.path.join(model_dir, "model_final.pth")
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            weights_path = os.path.join(base_dir, "default_model", "model_final.pth")
+
+        self.cfg.MODEL.WEIGHTS = weights_path
+        #model_dir = os.path.dirname(os.path.abspath(__file__)) # On prend le chemin absolu du output
+        #self.cfg.MODEL.WEIGHTS = os.path.join(model_dir, self.cfg.OUTPUT_DIR, "model_final.pth")
+
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh
-        self.cfg.MODEL.DEVICE = device
+        #self.cfg.MODEL.DEVICE = device
         self.predictor = DefaultPredictor(self.cfg)
         self.class_names = ["cz", "core_empty_or_broken", "core_full"] # TODO P3 Mettre des getters qui permettent d'extraire les classes dynamiquement
         #self.class_names = []

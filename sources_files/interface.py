@@ -220,16 +220,20 @@ class ModelUserFrame(ctk.CTkFrame):
     """
     def __init__(self, master):
         super().__init__(master)
-
+        # TODO standardiser le nom des variables, c'est un shitshow >:(
         # Variables globales
-        self.img_path = ""
-        self.img_file_name = os.path.basename(self.img_path)
+        self.img_path = "" # Chemin vers l'image à analyser
+        self.img_file_name = os.path.basename(self.img_path) # Nom seul de l'image à analyser
 
-        self.result_text = ""
+        self.modele_dir = "" # Chemin vers le directory du modèle de prédiction
+        self.model_dir_name = os.path.basename(self.modele_dir) # Nom seul du modèle de prédiction
 
-        self.grid_columnconfigure(1, weight=1)
+        self.result_text = "" # Sortie dans la boîte de texte de l'analyse
 
-        self.model_predictor = ModelPredictor() # Instance de ModelPredictor
+        self.grid_columnconfigure(1, weight=1) # Pour la mise en page
+
+        #self.model_predictor = ModelPredictor(model_dir=self.modele_dir) # Instance de ModelPredictor
+        self.model_predictor = None
 
         # Titre du frame
         self.title = ctk.CTkLabel(self, text="Image analyzer", fg_color="white", corner_radius=6)
@@ -243,9 +247,17 @@ class ModelUserFrame(ctk.CTkFrame):
         self.img_path_label = ctk.CTkLabel(self, text=self.img_file_name, fg_color="white", corner_radius=6)
         self.img_path_label.grid(column=1, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
+        # Import du directory du modèle
+        self.import_model_dir_button = ctk.CTkButton(self, text="Import model directory", command=self.model_dir_path_picker)
+        self.import_model_dir_button.grid(column=0, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+
+        # Affichage du nom du model directory
+        self.model_dir_label = ctk.CTkLabel(self, text=self.model_dir_name, fg_color="white", corner_radius=6)
+        self.model_dir_label.grid(column=1, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+
         # Entamer la prédiction avec le modèle
         self.begin_pred_button = ctk.CTkButton(self, text="Go !", command=self.begin_pred)
-        self.begin_pred_button.grid(row=2, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
+        self.begin_pred_button.grid(row=3, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
 
         """
         # Afficher l'image avec les prédictions, stand-by
@@ -261,9 +273,9 @@ class ModelUserFrame(ctk.CTkFrame):
         self.result_textbox = ctk.CTkTextbox(self, width=100, corner_radius=6)
         self.result_textbox.grid(row=4, column=0, sticky="ew", columnspan=2)
 
-    def img_path_picker(self):
+    def img_path_picker(self): # TODO Serait cool de pouvoir passer plusieurs images de suite
         """
-        Ouvre une boîte de dialogue vers le chemin de l'image à passer dans le modèle. \n
+        Ouvre une boîte d'explorateur de fichier vers le chemin de l'image à passer dans le modèle. \n
         Prend le nom du fichier et l'applique au label 'img_file_name' dans l'interface.
         :return: None
         """
@@ -277,11 +289,28 @@ class ModelUserFrame(ctk.CTkFrame):
         self.img_file_name = os.path.basename(self.img_path)
         self.img_path_label.configure(text=self.img_file_name)
 
+    def model_dir_path_picker(self):
+        """
+        Ouvre une boîte d'explorateur de fichier vers le chemin du directory du modèle à utilisé \n
+        Prend le nom du fichier et l'applique au label 'img_file_name' dans l'interface.
+        :return: None
+        """
+        root = tk.Tk()
+        root.withdraw()
+
+        self.modele_dir = filedialog.askdirectory(mustexist=True, title="Choisir un modèle d'analyse")
+
+        root.destroy()
+        self.model_dir_name = os.path.basename(self.modele_dir)
+        self.model_dir_label.configure(text=self.model_dir_name)
+
     def begin_pred(self):
         """
         Appellée à l'aide de 'begin_pred_button' et lance la prédiction sur une image avec le modèle entraîné.
         :return: String des données souhaitées.
         """
+        self.model_predictor = ModelPredictor(model_dir=self.modele_dir)  # Instance de ModelPredictor
+
         class_names, areas, ratio, image_name = self.model_predictor.analyze_image(self.img_path)
         # Afficher les résultats, pourrait être changé pour choisir dynamiquement ce que l'on veut extraire de l'image.
         # Par exemple, des "radios buttons" pour savoir le RQD, composition de l'échantillon, nbr de faille, etc.
