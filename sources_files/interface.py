@@ -18,11 +18,17 @@ class ModelTrainerFrame(ctk.CTkFrame):
         super().__init__(master)
 
         # Variables globales
+        # Chemin vers les annotations json (format COCO seulement)
         self.coco_path = ""
         self.coco_file_name = os.path.basename(self.coco_path)
 
+        # Chemin vers le dossier contenant le dataset (images seulement)
         self.dataset_path = ""
         self.dataset_file_name = os.path.basename(self.dataset_path)
+
+        # Nom du modèle entraîné. Input par l'utilisateur, utile pour entraîner plusieurs modèles différents
+        self.model_name_default = "modelName_model"
+        self.model_name = ""
 
         self.model_trainer = ModelTrainer() # Instance de ModelTrainer
 
@@ -128,10 +134,17 @@ class ModelTrainerFrame(ctk.CTkFrame):
         )
         self.param6_option.grid(row=8, column=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
+        # Entrée pour l'utilisateur lui permettant de setter le nom d'un modèle
+        self.model_name_entry = ctk.CTkEntry(self, placeholder_text=self.model_name_default)
+        self.model_name_entry.grid(row=9, column=0, padx=10, pady=10, sticky="ew", columnspan=1)
+
+        # Bouton de sauvegarde du nom du modèle
+        self.model_name_entry_btn = ctk.CTkButton(self, text="Save Name", corner_radius=6, command=self.save_model_name)
+        self.model_name_entry_btn.grid(row=9, column=1, padx=10, pady=10, sticky="ew", columnspan=1)
+
         # Begin training button
         self.train_button = ctk.CTkButton(self, text="Train !", corner_radius=6, command=self.train_button_callback)
-        self.train_button.grid(row=9, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
-
+        self.train_button.grid(row=10, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
 
     def coco_path_picker(self):
         root = tk.Tk()
@@ -182,7 +195,18 @@ class ModelTrainerFrame(ctk.CTkFrame):
     def train_button_callback(self):
         print("Début de l'entraînement selon les paramètres suivant:", self.params)
         self.model_trainer = ModelTrainer(**self.params)
-        self.model_trainer.begin_training(self.coco_path, self.dataset_path)
+        self.model_trainer.begin_training(self.coco_path, self.dataset_path, self.model_name)
+
+    def save_model_name(self):
+        self.model_name = self.model_name_entry.get()
+        print("Nom du modèle:", self.model_name)
+
+    def dummy_callback(self, thing):
+        """
+        Dummy callback pour tests
+        :param thing:
+        """
+        print(f"Something is happening ! {thing}")
 
     def get(self):
         return None
@@ -234,7 +258,7 @@ class ModelUserFrame(ctk.CTkFrame):
         self.my_image = self.pred_image_canvas.create_image(300, 300, image=self.image, anchor="nw")
         """
         # Afficher les résultats souhaités
-        self.result_textbox = ctk.CTkTextbox(master=self, width=100, corner_radius=6)
+        self.result_textbox = ctk.CTkTextbox(self, width=100, corner_radius=6)
         self.result_textbox.grid(row=4, column=0, sticky="ew", columnspan=2)
 
     def img_path_picker(self):
@@ -282,7 +306,7 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("my app")
-        self.geometry("700x500")
+        self.geometry("700x600")
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 

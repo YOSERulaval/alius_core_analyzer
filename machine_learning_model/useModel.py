@@ -16,8 +16,20 @@ class ModelPredictor:
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh
         self.cfg.MODEL.DEVICE = device
         self.predictor = DefaultPredictor(self.cfg)
-        self.class_names = ["cz", "core_empty_or_broken", "core_full"]
+        self.class_names = ["cz", "core_empty_or_broken", "core_full"] # TODO P3 Mettre des getters qui permettent d'extraire les classes dynamiquement
+        #self.class_names = []
 
+    # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
+    def analyze_joints(self):
+        return None
+
+    def analyze_lost_core(self):
+        return None
+
+    def analyze_etc(self):
+        return None
+
+    # Méthode pour tester l'analyse de résultat
     def analyze_image(self, image_path):
         image_name = os.path.basename(image_path)
         img = cv2.imread(image_path)
@@ -29,6 +41,7 @@ class ModelPredictor:
         classes = instances.pred_classes.cpu().numpy() # Ce que nous avons défini comme classe
 
         # Calculs pour le ratio d'aire, pour tests seulement
+        #appel d'une fonction du genre : add_class_name(self) qui ajoute une classe à la liste class_names
         class_names = ["cz", "core_empty_or_broken", "core_full"]
         areas = {"cz": 0, "core_empty_or_broken": 0, "core_full": 0}
 

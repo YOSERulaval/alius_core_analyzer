@@ -51,18 +51,10 @@ class ModelTrainer:
         cfg.MODEL.ROI_HEADS.NUM_CLASSES: only has one class (ballon)
         """
 
-
-
-    def begin_training(self, coco_path, dataset_path):
-
+    def begin_training(self, coco_path, dataset_path, model_name):
         # Assignations des méta-données à un dataset
         register_coco_instances("my_dataset_train", {}, coco_path, dataset_path)
-
-        # Getter pour les métadonnées
-        #train_metadata = MetadataCatalog.get("my_dataset_train")
-
-        # Affiche les images avec les métadonnées (pour tests)
-        #dataset_dicts = load_coco_json(coco_path, dataset_path, "my_dataset_train")
+        self.cfg.OUTPUT_DIR = model_name
 
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=True)
         trainer = DefaultTrainer(self.cfg)
