@@ -70,7 +70,6 @@ class ModelPredictor:
 
         return class_names, areas, ratio, image_name
 
-
 """
 # Configuration complète de Detectron2 (Mask-RCNN)
 cfg = get_cfg()
