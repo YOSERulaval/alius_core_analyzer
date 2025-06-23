@@ -8,12 +8,12 @@ from sympy.printing.pytorch import torch
 
 
 class ModelPredictor:
-    def __init__(self, model_dir):
+    def __init__(self, model_dir, confidence_thresh=0.7, num_classes=1):
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
 
-        #self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
-        #self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
+        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
 
         self.weights_path = os.path.join(model_dir, "model_final.pth")
         print("weights path is ", self.weights_path)
@@ -21,7 +21,7 @@ class ModelPredictor:
 
         self.predictor = DefaultPredictor(self.cfg)
 
-    def __run_prediction(self, img_path, class_names, confidence_thresh, num_classes):
+    def __run_prediction(self, img_path, class_names):
         """
         Méthode privée encapsulant tous les paramètres communs d'une analyse d'image standard
         :param img_path: Chemin vers l'image à analyser
@@ -30,8 +30,6 @@ class ModelPredictor:
         """
         img_name = os.path.basename(img_path)
         img = cv2.imread(img_path)
-        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
-        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
 
         outputs = self.predictor(img)
         instances = outputs["instances"].to("cpu")
@@ -45,12 +43,12 @@ class ModelPredictor:
             area_pixels = np.sum(mask)
             class_area[class_name] += area_pixels
 
-            # Visualisation du résultat
-            v = Visualizer(img[:, :, ::-1], scale=0.3, instance_mode=ColorMode.IMAGE_BW)
-            out = v.draw_instance_predictions(instances.to("cpu"))
-            cv2.imshow(img_name, out.get_image()[:, :, ::-1])
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+        # Visualisation du résultat
+        v = Visualizer(img[:, :, ::-1], scale=0.3, instance_mode=ColorMode.IMAGE_BW)
+        out = v.draw_instance_predictions(instances.to("cpu"))
+        cv2.imshow(img_name, out.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
         return class_names, class_area, img_name
 
@@ -74,7 +72,7 @@ class ModelPredictor:
         """
         print("Analyzing joints")
         class_names = ["joint"]
-        return self.__run_prediction(img_path, class_names, confidence_thresh=0.7, num_classes=1)
+        return self.__run_prediction(img_path, class_names)
 
     def analyze_crop_sample(self, img_path):
         """
@@ -85,7 +83,7 @@ class ModelPredictor:
         """
         print("Analyzing core sample")
         class_names = ["core"]
-        return self.__run_prediction(img_path, class_names, confidence_thresh=0.9, num_classes=1)
+        return self.__run_prediction(img_path, class_names)
 
     def get_methods(self):
         """
