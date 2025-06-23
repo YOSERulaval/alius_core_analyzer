@@ -1,5 +1,4 @@
 import os, json, cv2, random
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True" #segmenter la mémoire, sinon ça crash ! Pas trop sûr de bien comprendre ce bout encore (ça vient de chatGPT)
 import tensorboard
 import torch, detectron2
 

@@ -4,71 +4,99 @@ from detectron2 import model_zoo
 import numpy as np
 import os, cv2
 from detectron2.utils.visualizer import Visualizer, ColorMode
+from sympy.printing.pytorch import torch
+
 
 class ModelPredictor:
-    def __init__(self, confidence_thresh=0.7, model_dir=''):
+    def __init__(self, model_dir):
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3
 
-        if model_dir:
-            weights_path = os.path.join(model_dir, "model_final.pth")
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            weights_path = os.path.join(base_dir, "default_model", "model_final.pth")
+        #self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
+        #self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
 
-        self.cfg.MODEL.WEIGHTS = weights_path
-        #model_dir = os.path.dirname(os.path.abspath(__file__)) # On prend le chemin absolu du output
-        #self.cfg.MODEL.WEIGHTS = os.path.join(model_dir, self.cfg.OUTPUT_DIR, "model_final.pth")
+        self.weights_path = os.path.join(model_dir, "model_final.pth")
+        print("weights path is ", self.weights_path)
+        self.cfg.MODEL.WEIGHTS = self.weights_path
 
-        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh
-        #self.cfg.MODEL.DEVICE = device
         self.predictor = DefaultPredictor(self.cfg)
-        self.class_names = ["cz", "core_empty_or_broken", "core_full"] # TODO P3 Mettre des getters qui permettent d'extraire les classes dynamiquement
-        #self.class_names = []
 
-    # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
-    def analyze_joints(self):
-        return None
+    def __run_prediction(self, img_path, class_names, confidence_thresh, num_classes):
+        """
+        Méthode privée encapsulant tous les paramètres communs d'une analyse d'image standard
+        :param img_path: Chemin vers l'image à analyser
+        :param class_names: Nom de la ou les classes présentes dans l'annotation
+        :return: class_names, class_area, img_name
+        """
+        img_name = os.path.basename(img_path)
+        img = cv2.imread(img_path)
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
+        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
 
-    def analyze_lost_core(self):
-        return None
-
-    def analyze_etc(self):
-        return None
-
-    # Méthode pour tester l'analyse de résultat
-    def analyze_image(self, image_path):
-        image_name = os.path.basename(image_path)
-        img = cv2.imread(image_path)
         outputs = self.predictor(img)
+        instances = outputs["instances"].to("cpu")
+        masks = instances.pred_masks.cpu().numpy()
+        classes = instances.pred_classes.cpu().numpy()
 
-        # Extraction des classes utiles pour nos calculs
-        instances = outputs["instances"]
-        masks = instances.pred_masks.cpu().numpy() # Ce que la machine a prédit
-        classes = instances.pred_classes.cpu().numpy() # Ce que nous avons défini comme classe
+        class_area = {class_name: 0 for class_name in class_names}
 
-        # Calculs pour le ratio d'aire, pour tests seulement
-        #appel d'une fonction du genre : add_class_name(self) qui ajoute une classe à la liste class_names
-        class_names = ["cz", "core_empty_or_broken", "core_full"]
-        areas = {"cz": 0, "core_empty_or_broken": 0, "core_full": 0}
-
-        # Calcul de l'aire en pixel pour chacune des classes
         for mask, class_id in zip(masks, classes):
             class_name = class_names[class_id]
             area_pixels = np.sum(mask)
-            areas[class_name] += area_pixels
+            class_area[class_name] += area_pixels
 
-        ratio = (areas["core_empty_or_broken"] / areas["core_full"]) * 100
+            # Visualisation du résultat
+            v = Visualizer(img[:, :, ::-1], scale=0.3, instance_mode=ColorMode.IMAGE_BW)
+            out = v.draw_instance_predictions(instances.to("cpu"))
+            cv2.imshow(img_name, out.get_image()[:, :, ::-1])
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
 
-        # Pour visualiser la prédiction faite sur l'image test (avant le calcul)
-        v = Visualizer(img[:, :, ::-1], scale=0.35, instance_mode=ColorMode.IMAGE_BW)
-        out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-        cv2.imshow(image_name, out.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        return class_names, class_area, img_name
 
-        return class_names, areas, ratio, image_name
+    # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
+    def analyze_example(self, img_path):
+        """
+        <DESC> \n
+        Auteur : <NAME>
+        :param img_path: Chemin vers l'image à analyser
+        :return: Appel de __run_prediction
+        """
+        print("Ceci est un test")
+        #return self.__run_prediction(img_path, class_names, confidence_thresh=0.7, num_classes=1)
+
+    def analyze_joints(self, img_path):
+        """
+        Méthode simpliste d'analyse de joint \n
+        Auteur: Yohan Sercia
+        :param img_path: Chemin vers l'image à analyser
+        :return: Lance l'analyse des joints via __run_prediction
+        """
+        print("Analyzing joints")
+        class_names = ["joint"]
+        return self.__run_prediction(img_path, class_names, confidence_thresh=0.7, num_classes=1)
+
+    def analyze_crop_sample(self, img_path):
+        """
+        Méthode simpliste d'analyse de crop sample \n
+        Auteur: Yohan Sercia
+        :param img_path: Chemin vers l'image à analyser
+        :return: Lance l'analyse de crop sample via __run_prediction
+        """
+        print("Analyzing core sample")
+        class_names = ["core"]
+        return self.__run_prediction(img_path, class_names, confidence_thresh=0.9, num_classes=1)
+
+    def get_methods(self):
+        """
+        Accesseur des méthodes d'analyses, ajoutez une référence à votre méthode d'analyse ici afin de pouvoir l'utiliser dans l'interface.
+        :return: Retourne un dictionnaire avec les méthodes d'analyses en clés
+        """
+        return {
+            "Analyze joints": self.analyze_joints,
+            "Analyze core sample": self.analyze_crop_sample,
+            "Test": self.analyze_example
+        }
 
 """
 # Configuration complète de Detectron2 (Mask-RCNN)
