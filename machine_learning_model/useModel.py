@@ -2,7 +2,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
 import numpy as np
-import os, cv2
+import os, cv2, pandas as pd
 from detectron2.utils.visualizer import Visualizer, ColorMode
 from sympy.printing.pytorch import torch
 
@@ -32,6 +32,7 @@ class ModelPredictor:
         img = cv2.imread(img_path)
 
         outputs = self.predictor(img)
+
         instances = outputs["instances"].to("cpu")
         masks = instances.pred_masks.cpu().numpy()
         classes = instances.pred_classes.cpu().numpy()
@@ -52,6 +53,13 @@ class ModelPredictor:
 
         return class_names, class_area, img_name
 
+    def export_joints_to_excel(self, joint_position, img_name):
+        df = pd.DataFrame(joint_position) # Creer un tableau des positions des joints
+        excel_path = f"{img_name}_joints_positions.xlsx"
+        df.to_excel(excel_path, index=False)
+
+        print(f"Positions des joints exportées vers : {excel_path}")
+
     # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
     def analyze_example(self, img_path):
         """
@@ -61,18 +69,41 @@ class ModelPredictor:
         :return: Appel de __run_prediction
         """
         print("Ceci est un test")
-        #return self.__run_prediction(img_path, class_names, confidence_thresh=0.7, num_classes=1)
+        class_names = ["core"]
+        return self.__run_prediction(img_path, class_names)
 
     def analyze_joints(self, img_path):
         """
         Méthode simpliste d'analyse de joint \n
         Auteur: Yohan Sercia
         :param img_path: Chemin vers l'image à analyser
-        :return: Lance l'analyse des joints via __run_prediction
+        :return: La position relative des joints, en ordre
         """
         print("Analyzing joints")
         class_names = ["joint"]
-        return self.__run_prediction(img_path, class_names)
+        class_names, class_area, img_name = self.__run_prediction(img_path, class_names)
+
+        img = cv2.imread(img_path)
+        outputs = self.predictor(img)
+
+        instances = outputs["instances"].to("cpu")
+        boxes = instances.pred_boxes.tensor.numpy()
+
+        joint_positions = []
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            x_center = (x1 + x2) / 2
+            y_center = (y1 + y2) / 2
+            joint_positions.append({"x_center": x_center, "y_center": y_center})
+
+        joint_positions_sorted = sorted(
+            joint_positions,
+            key=lambda pos: (pos["y_center"], pos["x_center"])
+        )
+
+        self.export_joints_to_excel(joint_positions_sorted, img_name)  # Export vers Excel
+
+        return joint_positions_sorted
 
     def analyze_crop_sample(self, img_path):
         """
