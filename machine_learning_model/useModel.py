@@ -8,12 +8,12 @@ from sympy.printing.pytorch import torch
 
 
 class ModelPredictor:
-    def __init__(self, model_dir, confidence_thresh=0.7, num_classes=1):
+    def __init__(self, model_dir, confidence_thresh=0.9, num_classes=1):
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
 
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
-        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH = confidence_thresh # Note de 'passage' pour afficher une classe prédite
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh # Note de 'passage' pour afficher une classe prédite
 
         self.weights_path = os.path.join(model_dir, "model_final.pth")
         print("weights path is ", self.weights_path)
