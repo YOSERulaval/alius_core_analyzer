@@ -8,10 +8,9 @@ from sympy.printing.pytorch import torch
 
 
 class ModelPredictor:
-    def __init__(self, model_dir, confidence_thresh=0.9, num_classes=1):
+    def __init__(self, model_dir, confidence_thresh=0.8, num_classes=3):
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes # Nombre de classes annotées
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = confidence_thresh # Note de 'passage' pour afficher une classe prédite
 
@@ -69,7 +68,9 @@ class ModelPredictor:
         :return: Appel de __run_prediction
         """
         print("Ceci est un test")
-        class_names = ["core"]
+        class_names = ["core", "joint", "broken_core"]
+        #self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(class_names)
+        #print("number of classes : ", len(class_names))
         return self.__run_prediction(img_path, class_names)
 
     def analyze_joints(self, img_path):

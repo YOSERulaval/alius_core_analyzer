@@ -306,8 +306,8 @@ class ModelUserFrame(ctk.CTkFrame):
         root.withdraw()
 
         self.img_path = filedialog.askopenfilename(title="choisir une image à analyser",
-                                          filetypes=(("images files", ".jpg"),))
-
+                                                   filetypes=(("images files", ".jpg"),)
+                                                   )
         root.destroy()
         self.img_file_name = os.path.basename(self.img_path)
         self.img_path_label.configure(text=self.img_file_name)
