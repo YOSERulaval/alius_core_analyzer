@@ -306,7 +306,8 @@ class ModelUserFrame(ctk.CTkFrame):
         root.withdraw()
 
         self.img_path = filedialog.askopenfilename(title="choisir une image à analyser",
-                                                   filetypes=(("images files", ".jpg"),)
+                                                   filetypes=(("images files", ".jpg"),),
+                                                   initialdir="machine_learning_model/datasets"
                                                    )
         root.destroy()
         self.img_file_name = os.path.basename(self.img_path)
@@ -321,7 +322,11 @@ class ModelUserFrame(ctk.CTkFrame):
         root = tk.Tk()
         root.withdraw()
 
-        self.modele_dir = filedialog.askdirectory(mustexist=True, title="Choisir un modèle d'analyse")
+        self.modele_dir = filedialog.askdirectory(
+            mustexist=True,
+            title="Choisir un modèle d'analyse",
+            initialdir="machine_learning_model/trained_models"
+        )
         self.model_selected = True if self.modele_dir else False
 
         if self.model_selected:

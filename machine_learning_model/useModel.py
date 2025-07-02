@@ -18,7 +18,14 @@ class ModelPredictor:
         print("weights path is ", self.weights_path)
         self.cfg.MODEL.WEIGHTS = self.weights_path
 
+        self.pixel_to_meter_ratio = 0.0
+
         self.predictor = DefaultPredictor(self.cfg)
+
+        # La mémoire CUDA allouée est décidée par le modèle (mask_rcnn_R_50, par exemple) TODO : tester la stabilité avec d'autres modèles
+        allocated_memory_bytes = torch.cuda.memory_allocated()
+        allocated_memory_gigabytes = allocated_memory_bytes / (1024 ** 3)
+        print(f"Mémoire CUDA allouée: {allocated_memory_gigabytes:.3f} GB")
 
     def __run_prediction(self, img_path, class_names):
         """
@@ -52,13 +59,6 @@ class ModelPredictor:
 
         return class_names, class_area, img_name
 
-    def export_joints_to_excel(self, joint_position, img_name):
-        df = pd.DataFrame(joint_position) # Creer un tableau des positions des joints
-        excel_path = f"{img_name}_joints_positions.xlsx"
-        df.to_excel(excel_path, index=False)
-
-        print(f"Positions des joints exportées vers : {excel_path}")
-
     # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
     def analyze_example(self, img_path):
         """
@@ -80,31 +80,66 @@ class ModelPredictor:
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des joints, en ordre
         """
-        print("Analyzing joints")
-        class_names = ["joint"]
-        class_names, class_area, img_name = self.__run_prediction(img_path, class_names)
-
         img = cv2.imread(img_path)
         outputs = self.predictor(img)
-
         instances = outputs["instances"].to("cpu")
+
+        classes = instances.pred_classes.numpy()
         boxes = instances.pred_boxes.tensor.numpy()
+        scores = instances.scores.numpy()
 
-        joint_positions = []
-        for box in boxes:
-            x1, y1, x2, y2 = box
-            x_center = (x1 + x2) / 2
-            y_center = (y1 + y2) / 2
-            joint_positions.append({"x_center": x_center, "y_center": y_center})
+        class_names = ["core", "joint", "broken_core"]
+        core_runs = [] # Liste de la classe parent
+        joints = [] # Liste de la classe enfant
 
-        joint_positions_sorted = sorted(
-            joint_positions,
-            key=lambda pos: (pos["y_center"], pos["x_center"])
-        )
+        for class_id, bbox, confidence in zip(classes, boxes, scores):
+            if class_names[class_id] == "core":
+                core_runs.append(CoreRun(bbox, confidence)) # core_runs → [CoreRun1, CoreRun2, ...]
+            elif class_names[class_id] == "joint":
+                joints.append(Joint(bbox, confidence)) # joints → [Joint1, Joint2, ...]
 
-        self.export_joints_to_excel(joint_positions_sorted, img_name)  # Export vers Excel
+        for joint in joints:
+            joint_center = joint.center() # on centre tous les objets JointSample
+            for core_run in core_runs:
+                if bbox_contains_point(core_run.bbox, joint_center):
+                    core_run.add_joint(joint) # Si un joint est à l'intérieur d'une bbox on l'ajoute à la liste de joint de cet objet CoreRun
 
-        return joint_positions_sorted
+        """
+        Important:
+        Detectron2 tri les données de prédictions en ordre de taux de confiance, il faut donc faire un tri manuel avant 
+        l'export vers Excel
+        """
+        core_runs_sorted = sort_cores(core_runs) # Tri des cores de haut en bas et gauche à droite
+
+        cumulative_px = 0 # On commence l'analyse à zéro. La vrai profondeur est ajouté via Excel après
+
+        self.pixel_to_meter_ratio = pixel_to_meter(core_runs_sorted, 0.06)
+
+        for c_idx, core in enumerate(core_runs_sorted):
+            x1, _, x2, _ = core.bbox # on change seulement les valeurs en x de la bbox
+            length_px = x2 - x1
+
+            # Attributs en pixels
+            core.x_start_px = cumulative_px
+            core.x_end_px = cumulative_px + length_px
+            core.length_px = length_px
+
+            # Attributs en mètres
+            core.start_m = cumulative_px * self.pixel_to_meter_ratio
+            core.end_m = core.x_end_px * self.pixel_to_meter_ratio
+            core.length_m = length_px * self.pixel_to_meter_ratio
+
+            if core.joints:
+                for j_idx, joint in enumerate(core.joints, start=0):
+                    joint_pos_rel = cumulative_px + joint.center_x()
+                    joint.distance_px = joint_pos_rel - core.x_start_px
+                    joint.distance_m = abs(joint.distance_px * self.pixel_to_meter_ratio)
+
+            cumulative_px += length_px
+        print(core_runs_sorted)
+        self.export_core_run_to_excel(core_runs_sorted, os.path.basename(img_path))
+
+        return core_runs_sorted
 
     def analyze_crop_sample(self, img_path):
         """
@@ -123,65 +158,120 @@ class ModelPredictor:
         :return: Retourne un dictionnaire avec les méthodes d'analyses en clés
         """
         return {
-            "Analyze joints": self.analyze_joints,
-            "Analyze core sample": self.analyze_crop_sample,
+            "Analyze core dataset (joints, BC, LC, etc)": self.analyze_joints,
+            "Analyze and crop lab core sample": self.analyze_crop_sample,
             "Test": self.analyze_example
         }
 
-"""
-# Configuration complète de Detectron2 (Mask-RCNN)
-cfg = get_cfg()
-cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3  # même nombre de classes que lors de l'entraînement
-cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
-cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # seuil de confiance
-cfg.MODEL.DEVICE = 'cpu'  # ou 'cuda' si tu utilises un GPU
+    def export_core_run_to_excel(self, core_runs, img_name):
+        all_data = []
 
-predictor = DefaultPredictor(cfg)
+        for idx, core_run in enumerate(core_runs, start=1):
+            core_id = f"Core_{idx}"
+            core_run_data = {
+                "core_run_id": core_id,
+                "core_confidence": core_run.confidence,
+                # "x_start_px": core_run.x_start_px,
+                # "x_end_px": core_run.x_end_px,
+                # "length_px": core_run.length_px,
+                "from": core_run.start_m,
+                "to": core_run.end_m,
+                "run_length": core_run.length_m,
+            }
 
-def path_picker_image():
-    root = tk.Tk()
-    root.withdraw()
-    path = filedialog.askopenfilename(title="Choisir une image à mettre dans le modèle",
-                                      filetypes=(("image files", ".jpg"),))
-    root.destroy()
-    if not path:
-        print("Aucun fichier sélectionné, sortie.")
-        exit(0)
-    return path
+            if core_run.joints:
+                for joint_idx, joint in enumerate(core_run.joints, start=1):
+                    joint_data = {
+                        **core_run_data,
+                        "joint_id": f"{core_id}_Joint_{joint_idx}",
+                        "joint_x_position": joint.distance_m, # Après
+                        #"joint_x_position": abs(joint.center()[0] # Avant
+                        "joint_confidence": joint.confidence
+                    }
+                    all_data.append(joint_data)
+            else:
+                joint_data = {
+                    **core_run_data,
+                    "joint_id": None,
+                    "joint_x_center": None,
+                    "joint_confidence": None
+                }
+                all_data.append(joint_data)
 
-image_path = path_picker_image()
-image_name = os.path.basename(image_path)
-img = cv2.imread(image_path)
-outputs = predictor(img)
+        # Créer le DataFrame final
+        df = pd.DataFrame(all_data)
 
-instances = outputs["instances"]
-masks = instances.pred_masks.cpu().numpy()
-classes = instances.pred_classes.cpu().numpy()
+        # Exporter vers Excel sur une seule feuille
+        excel_path = f"{img_name}_core_runs.xlsx"
+        df.to_excel(excel_path, sheet_name="Core_and_Joints", index=False)
 
-class_names = ["cz", "core_empty_or_broken", "core_full"]
+        print(f"Données exportées vers : {excel_path}")
 
-areas = {"cz": 0, "core_empty_or_broken": 0, "core_full": 0}
+class CoreRun:
+    def __init__(self, bbox, confidence):
+        self.bbox = bbox
+        self.confidence = confidence
+        self.joints = []
 
+        # Caractéristiques de la run
+        # en pixels
+        self.x_start_px = None
+        self.x_end_px = None
+        self.length_px = None
 
-# Pour visualiser la prédiction faite sur l'image test (avant le calcul)
-im = cv2.imread(image_path)
-v = Visualizer(im[:, :, ::-1],
-                   scale=0.2,
-                   instance_mode=ColorMode.IMAGE_BW
-                   )
-out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
-cv2.imshow(image_path, out.get_image()[:, :, ::-1])
-cv2.waitKey(0)
+        # en mètres
+        self.start_m = None
+        self.end_m = None
+        self.length_m = None
 
+    def add_joint(self, joint):
+        self.joints.append(joint)
 
-for mask, class_id in zip(masks, classes):
-    class_name = class_names[class_id]
-    area_pixels = np.sum(mask)
-    areas[class_name] += area_pixels
+class Joint:
+    def __init__(self, bbox, confidence):
+        self.bbox = bbox
+        self.confidence = confidence
 
-print("Aires calculées (pixels):", areas, " (pixels)")
+        # en pixels
+        self.distance_px = None
 
-ratio = (areas["core_empty_or_broken"] / areas["core_full"]) * 100
-print(f"Rapport broken/full : <{ratio:.2f}%> pour l'image : <{image_name}>.")
-"""
+        # en mètres
+        self.distance_m = None
+
+    def center(self):
+        x1, y1, x2, y2 = self.bbox
+        return (x1 + x2) / 2, (y1 + y2) / 2
+
+    def center_x(self):
+        x1, _, x2, _ = self.bbox
+        pos_x = (x1 + x2) / 2
+        return pos_x
+
+def bbox_contains_point(bbox, point):
+    """
+    Vérifie si un point (x, y) se trouve à l'intérieur d'une bbox [x1, y1, x2, y2]
+    """
+    x1, y1, x2, y2 = bbox # Délimitation de la bbox
+    x, y = point # Point centre du joint (ou d'un autre attribut)
+    return x1 <= x <= x2 and y1 <= y <= y2 # return True si le point est à l'intérieur de la bbox, alors on sait que le joint (ou l'attribut) appartient à cette 'run' (core)
+
+def sort_cores(core_runs):
+    """
+    :param core_runs: Accepte une liste de liste, ex: [[x1, y1, x2, y2], [x1, y1, x2, y2], ...] qui représente tous
+    les bbox des cores
+    :return: Une liste de liste trié en fonction de y1 d'abord suivi de x1.
+    """
+    return sorted(core_runs, key=lambda core: (core.bbox[1], core.bbox[0]))
+
+def pixel_to_meter(core_runs_sorted, core_diameter):
+    """
+    Calcul la hauteur (y2-y1) de TOUS les cores dans le dataset et fait la moyenne de cette hauteur.
+    :param core_runs_sorted: Liste des cores triés.
+    :param core_diameter: Diamètre du core à analyser (NQ, HQ, etc). Utiliser comme mesure de référence
+    :return: Le ratio de conversion pixel<->mètre
+    """
+    d_core = core_diameter
+    heights = [core.bbox[3] - core.bbox[1] for core in core_runs_sorted]
+    d_average = sum(heights) / len(heights) # moyenne
+
+    return d_core / d_average
