@@ -8,7 +8,7 @@ from sympy.printing.pytorch import torch
 
 
 class ModelPredictor:
-    def __init__(self, model_dir, confidence_thresh=0.8, num_classes=1): # TODO num_classes n'est pas dynamique ? À vérifier
+    def __init__(self, model_dir, confidence_thresh=0.8, num_classes=5): # TODO num_classes n'est pas dynamique ? À vérifier
         # ----------------------------------Ne pas modifier cette partie-----------------------------------------------#
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -22,13 +22,20 @@ class ModelPredictor:
         self.pixel_to_meter_ratio = 0.0
 
         self.predictor = DefaultPredictor(self.cfg) # type de prédicteur, via Detectron2
+
+        #torch.cuda.empty_cache() # vider la cache avant chaque run
         # -------------------------------------------------------------------------------------------------------------#
 
-        # La mémoire CUDA allouée est décidée par le modèle (mask_rcnn_R_50, par exemple) TODO : tester la stabilité avec d'autres modèles
+        # La mémoire CUDA allouée est décidée par le modèle (mask_rcnn_R_50, par exemple) TODO : tester avec d'autres modèles
         # À des fins de test seulement
         allocated_memory_bytes = torch.cuda.memory_allocated()
         allocated_memory_gigabytes = allocated_memory_bytes / (1024 ** 3)
+
+        cached_memory_bytes = torch.cuda.memory_reserved()
+        cached_memory_gigabytes = cached_memory_bytes / (1024 ** 3)
+
         print(f"Mémoire CUDA allouée: {allocated_memory_gigabytes:.3f} GB")
+        print(f"Mémoire CUDA cache: {cached_memory_gigabytes:.3f} GB")
 
     def __run_prediction(self, img_path, class_names):
         """
@@ -45,7 +52,7 @@ class ModelPredictor:
         instances = outputs["instances"].to("cpu") # instances enregistrées dans le buffer du cpu
 
         boxes = instances.pred_boxes.tensor.numpy()
-        print("boxes: ", boxes)
+        #print("boxes: ", boxes)
         masks = instances.pred_masks.cpu().numpy()
         classes = instances.pred_classes.cpu().numpy()
 
@@ -67,27 +74,32 @@ class ModelPredictor:
 
     # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
     def analyze_example(self, img_path):
+        # Exemple de docstring à mettre dans votre méthode:
         """
         Auteur : <NAME> \n
-        Dernière MAJ : <DATE jj-mm-aaaa> \n
+        Dernière MAJ : <jj-mm-aaaa> \n
         Description : <DESC> \n
         :param img_path: Chemin vers l'image à analyser
         :return: Appel de __run_prediction
         """
         print("Ceci est un test")
-        class_names = ["core", "joint", "broken_core"]
-        #self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(class_names)
-        #print("number of classes : ", len(class_names))
+        clean_cache() # Libérer la mémoire du GPU AVANT de commencer une analyse.
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # !! IMPORTANT de mettre votre 'note de passage' !!
+        class_names = ["core", "joint", "broken_core", "lost_core", "fault"] # Ajoutez toutes les classes présentes sur vos annotations
+
         return self.__run_prediction(img_path, class_names)
 
     def analyze_joints(self, img_path):
         """
         Auteur : Yohan Sercia \n
-        Dernière MAJ : 21-07-2025 \n
+        Dernière MAJ : 25-07-2025 \n
         Description : Méthode simpliste d'analyse de joint \n
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des joints, en ordre
         """
+        clean_cache()
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.75
+
         img = cv2.imread(img_path)
         outputs = self.predictor(img)
         instances = outputs["instances"].to("cpu") # instances enregistrées dans le buffer du cpu
@@ -96,69 +108,181 @@ class ModelPredictor:
         boxes = instances.pred_boxes.tensor.numpy()
         scores = instances.scores.numpy()
 
-        class_names = ["core", "joint", "broken_core"]
-        core_runs = [] # Liste de la classe parent
-        joints = [] # Liste de la classe enfant
+        class_names = ["core", "joint", "broken_core", "lost_core", "fault"]
+
+        # Liste des cores (parent) et des fractures (enfant)
+        core_runs = []
+        fractures = []
 
         for class_id, bbox, confidence in zip(classes, boxes, scores):
             if class_names[class_id] == "core":
-                core_runs.append(CoreRun(bbox, confidence)) # core_runs → [CoreRun1, CoreRun2, ...]
-            elif class_names[class_id] == "joint":
-                joints.append(Joint(bbox, confidence)) # joints → [Joint1, Joint2, ...]
-
-        for joint in joints:
-            joint_center = joint.center() # on centre tous les objets JointSample
-            for core_run in core_runs:
-                if bbox_contains_point(core_run.bbox, joint_center):
-                    core_run.add_joint(joint) # Si un joint est à l'intérieur d'une bbox on l'ajoute à la liste de joint de cet objet CoreRun
+                core_runs.append(CoreRun(bbox, confidence))
+            if class_names[class_id] in ["joint", "broken_core", "lost_core", "fault"]:
+                fracture = Fracture(bbox, confidence, class_names[class_id])
+                fractures.append(fracture)
 
         """
         Important:
-        Detectron2 tri les données de prédictions en ordre de taux de confiance, il faut donc faire un tri manuel avant 
+        Detectron2 tri les données de prédictions en ordre décroissant de taux de confiance, il faut donc faire un tri manuel avant 
         l'export vers Excel
         """
         core_runs_sorted = sort_cores(core_runs) # Tri des cores de haut en bas et gauche à droite
 
         cumulative_px = 0 # On commence l'analyse à zéro. La vraie profondeur est ajouté via Excel après
 
-        self.pixel_to_meter_ratio = pixel_to_meter(core_runs_sorted, 0.06) # TODO pouvoir donner le choix entre HQ, NQ, HQ3, etc
+        self.pixel_to_meter_ratio = pixel_to_meter(core_runs_sorted, 0.0635) # TODO pouvoir donner le choix entre HQ, NQ, HQ3 dans l'interface
 
-        for c_idx, core in enumerate(core_runs_sorted):
-            x1, _, x2, _ = core.bbox # on change seulement les valeurs en x de la bbox
+        # Boucle principale qui calcul les mesures cumulées
+        for core in core_runs_sorted:
+            x1, _, x2, _ = core.bbox
             length_px = x2 - x1
 
-            # Attributs en pixels
             core.x_start_px = cumulative_px
             core.x_end_px = cumulative_px + length_px
             core.length_px = length_px
 
-            # Attributs en mètres, conversion selon le ratio calculé par 'pixel_to_meter_ratio'
             core.start_m = cumulative_px * self.pixel_to_meter_ratio
             core.end_m = core.x_end_px * self.pixel_to_meter_ratio
             core.length_m = length_px * self.pixel_to_meter_ratio
 
-            if core.joints:
-                # Si un joint est détecté dans un core, on MAJ ses attributs
-                for j_idx, joint in enumerate(core.joints, start=0):
-                    joint_pos_rel = cumulative_px + joint.center_x() # on conserve la distance relative accumulée
-                    joint.distance_px = joint_pos_rel - core.x_start_px # position relative du joint selon le début de la run, en pixels
-                    joint.distance_m = abs(joint.distance_px * self.pixel_to_meter_ratio) # position relative du joint selon le début de la run, en mètres
+            # Associer clairement chaque fracture à son core
+            for fracture in fractures:
+                if bbox_contains_point(core.bbox, fracture.center()):
+                    fracture.compute_distances(core.bbox, self.pixel_to_meter_ratio)
+                    core.add_fracture(fracture)  # méthode unique add_fracture()
 
             cumulative_px += length_px
-        self.export_core_run_to_excel(core_runs_sorted, os.path.basename(img_path)) # export vers excel
 
-        return core_runs_sorted # au besoin
+        #self.export_core_run_to_excel(core_runs_sorted, os.path.basename(img_path)) # export vers excel
+        return core_runs_sorted
 
     def analyze_crop_sample(self, img_path):
         """
-        Méthode simpliste d'analyse de crop sample \n
-        Auteur: Yohan Sercia
+        Auteur : Yohan Sercia \n
+        Dernière MAJ : 21-07-2025 \n
+        Méthode simpliste d'analyse de crop sample du lab \n
         :param img_path: Chemin vers l'image à analyser
         :return: Lance l'analyse de crop sample via __run_prediction
         """
+        clean_cache()
         print("Analyzing core sample")
         class_names = ["core"]
         return self.__run_prediction(img_path, class_names)
+
+    @staticmethod
+    def export_core_run_to_excel(core_runs, img_name):
+        """
+        Pour une seule image
+        :param core_runs:
+        :param img_name:
+        """
+        all_data = []
+
+        for idx, core in enumerate(core_runs):
+            core_data = {
+                "core_run_id": f"Core_{idx}",
+                "from": core.start_m,
+                "to": core.end_m,
+                "run_length": core.length_m
+            }
+
+            if core.fractures:
+                for f_idx, fracture in enumerate(core.fractures):
+                    fracture_data = {
+                        **core_data,
+                        "fracture_id": f"{core_data['core_run_id']}_{fracture.fracture_type}_{f_idx}",
+                        "fracture_type": fracture.fracture_type,
+                        "position_m": fracture.distance_m,
+                        "length_m": fracture.length_m
+                    }
+                    all_data.append(fracture_data)
+            else:
+                no_fracture_data = {
+                    **core_data,
+                    "fracture_id": None,
+                    "fracture_type": None,
+                    "position_m": None,
+                    "length_m": None
+                }
+                all_data.append(no_fracture_data)
+
+        df = pd.DataFrame(all_data)
+        excel_path = f"{img_name}_core_fractures.xlsx"
+        df.to_excel(excel_path, sheet_name="Fractures", index=False)
+        print(f"Données exportées vers : {excel_path}")
+
+    @staticmethod
+    def export_multiple_core_runs_to_excel(core_runs, output_name):
+        """
+        Pour plusieurs images consécutives
+        :param core_runs:
+        :param output_name:
+        """
+        all_data = []
+
+        for idx, core in enumerate(core_runs):
+            core_data = {
+                "img_name": core.img_name,
+                "core_run_id": f"{core.img_name}_Core_{idx}",
+                "from": core.start_m,
+                "to": core.end_m,
+                "run_length": core.length_m
+            }
+
+            if core.fractures:
+                for f_idx, fracture in enumerate(core.fractures):
+                    fracture_data = {
+                        **core_data,
+                        "fracture_id": f"{core_data['core_run_id']}_{fracture.fracture_type}_{f_idx}",
+                        "fracture_type": fracture.fracture_type,
+                        "position_m": fracture.distance_m,
+                        "length_m": fracture.length_m
+                    }
+                    all_data.append(fracture_data)
+            else:
+                no_fracture_data = {
+                    **core_data,
+                    "fracture_id": None,
+                    "fracture_type": None,
+                    "position_m": None,
+                    "length_m": None
+                }
+                all_data.append(no_fracture_data)
+
+        df = pd.DataFrame(all_data)
+        excel_path = f"{output_name}_cores_fractures.xlsx"
+        df.to_excel(excel_path, sheet_name="Batch_Fractures", index=False)
+        print(f"Données exportées vers : {excel_path}")
+
+    def analyze_folder(self, folder_path):
+        """
+        Auteur : Yohan Sercia \n
+        Dernière MAJ : 25-07-2025 \n
+        Description : Méthode simpliste d'analyse de joint \n
+        :param folder_path: Chemin vers l'image à analyser
+        :return: La position relative des runs et des fractures
+        """
+        all_core_runs = []
+
+        image_files = os.listdir(folder_path)
+
+        if not image_files:
+            print("Aucune image trouvée dans le dossier spécifié.")
+            return
+
+        # Parcourir et analyser chaque image
+        for img_path in image_files:
+            print(f"Analyse de l'image : {img_path}")
+            core_runs_sorted = self.analyze_joints(img_path)
+
+            # Ajouter chaque résultat clairement à une liste globale
+            img_name = os.path.basename(img_path)
+            for core_run in core_runs_sorted:
+                core_run.img_name = img_name  # enregistrer le nom de l'image associée
+                all_core_runs.append(core_run)
+
+        # Export final vers Excel
+        self.export_multiple_core_runs_to_excel(all_core_runs, "batch_analysis")
 
     def get_methods(self):
         """
@@ -166,56 +290,12 @@ class ModelPredictor:
         :return: Retourne un dictionnaire avec les méthodes d'analyses en clés
         """
         return {
-            "Analyze core dataset (joints, BC, LC, etc)": self.analyze_joints,
+            "Analyze core dataset (one img)": self.analyze_joints,
+            "Analyze core dataset (multiple img)": self.analyze_folder,
             "Analyze and crop lab core sample": self.analyze_crop_sample,
-            "Test": self.analyze_example,
+            "Test avec image": self.analyze_example,
             # etc ...
         }
-
-    @staticmethod
-    def export_core_run_to_excel(core_runs, img_name):
-        all_data = []
-
-        for idx, core_run in enumerate(core_runs, start=1):
-            core_id = f"Core_{idx}"
-            core_run_data = {
-                "core_run_id": core_id,
-                "core_confidence": core_run.confidence,
-                # "x_start_px": core_run.x_start_px,
-                # "x_end_px": core_run.x_end_px,
-                # "length_px": core_run.length_px,
-                "from": core_run.start_m,
-                "to": core_run.end_m,
-                "run_length": core_run.length_m,
-            }
-
-            if core_run.joints:
-                for joint_idx, joint in enumerate(core_run.joints, start=1):
-                    joint_data = {
-                        **core_run_data,
-                        "joint_id": f"{core_id}_Joint_{joint_idx}",
-                        "joint_x_position": joint.distance_m, # Après
-                        #"joint_x_position": abs(joint.center()[0] # Avant
-                        "joint_confidence": joint.confidence
-                    }
-                    all_data.append(joint_data)
-            else:
-                joint_data = {
-                    **core_run_data,
-                    "joint_id": None,
-                    "joint_x_center": None,
-                    "joint_confidence": None
-                }
-                all_data.append(joint_data)
-
-        # Créer le DataFrame final
-        df = pd.DataFrame(all_data)
-
-        # Exporter vers Excel sur une seule feuille
-        excel_path = f"{img_name}_core_runs.xlsx"
-        df.to_excel(excel_path, sheet_name="Core_and_Joints", index=False)
-
-        print(f"Données exportées vers : {excel_path}")
 
 class CoreRun:
     """
@@ -224,51 +304,47 @@ class CoreRun:
     def __init__(self, bbox, confidence):
         self.bbox = bbox
         self.confidence = confidence
-        self.joints = [] # Liste vide qui accepte des listes de joints. Ex: pour core_1: [[coord. joint_1] []]
+        self.fractures = []  # une seule liste pour tous les types de fracture
 
-        # Caractéristiques de la run
-        # en pixels
+        # autres attributs inchangés
         self.x_start_px = None
         self.x_end_px = None
         self.length_px = None
 
-        # en mètres
         self.start_m = None
         self.end_m = None
         self.length_m = None
 
-    def add_joint(self, joint):
-        """
-        Associe un joint au core actuel (via self.joints).
-        :param joint: liste contenant les coordonnées d'un joint, via l'instant créée de la classe 'Joint'.
-        """
-        self.joints.append(joint)
+    def add_fracture(self, fracture):
+        self.fractures.append(fracture)
 
-class Joint:
+
+class Fracture:
     """
     Gère les attributs d'un joint (point milieu, point centre, boundary box, niveau de confiance).
     """
-    def __init__(self, bbox, confidence):
+    def __init__(self, bbox, confidence, fracture_type):
         self.bbox = bbox
         self.confidence = confidence
+        self.fracture_type = fracture_type  # 'joint', 'broken_core', 'lost_core', 'fault'
 
-        # en pixels
         self.distance_px = None
-
-        # en mètres
         self.distance_m = None
+        self.length_px = abs(bbox[2] - bbox[0])  # longueur horizontale par défaut
+        self.length_m = None
 
     def center(self):
-        x1, y1, x2, y2 = self.bbox
-        return (x1 + x2) / 2, (y1 + y2) / 2
+        x_center = (self.bbox[0] + self.bbox[2]) / 2
+        y_center = (self.bbox[1] + self.bbox[3]) / 2
+        return x_center, y_center
 
     def center_x(self):
-        """
-        :return: la coordonnée en x du point milieu d'un joint
-        """
-        x1, _, x2, _ = self.bbox
-        pos_x = (x1 + x2) / 2
-        return pos_x
+        return (self.bbox[0] + self.bbox[2]) / 2
+
+    def compute_distances(self, core_bbox, pixel_to_meter_ratio):
+        self.distance_px = self.center_x() - core_bbox[0]
+        self.distance_m = self.distance_px * pixel_to_meter_ratio
+        self.length_m = self.length_px * pixel_to_meter_ratio
 
 # Fonctions globales, ne pas modifier
 def bbox_contains_point(bbox, point):
@@ -285,7 +361,10 @@ def sort_cores(core_runs):
     les bbox des cores
     :return: Une liste de liste trié en fonction de y1 d'abord suivi de x1.
     """
-    return sorted(core_runs, key=lambda core: (core.bbox[1], core.bbox[0]))
+    #return sorted(core_runs, key=lambda core: (core.bbox[0], core.bbox[1]))
+
+    sorted_by_x = sorted(core_runs, key=lambda core: core.bbox[0])
+    return sorted(sorted_by_x, key=lambda core: core.bbox[1]) # gauche à droite, haut en bas
 
 def pixel_to_meter(core_runs_sorted, core_diameter):
     """
@@ -299,3 +378,9 @@ def pixel_to_meter(core_runs_sorted, core_diameter):
     d_average = sum(heights) / len(heights) # moyenne
 
     return d_core / d_average
+
+def clean_cache():
+    """
+    Vide la mémoire allouée à CUDA. Important d'appeller cette fonction au début de chaque méthode d'analyse.
+    """
+    torch.cuda.empty_cache()

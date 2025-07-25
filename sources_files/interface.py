@@ -30,11 +30,13 @@ class ModelTrainerFrame(ctk.CTkFrame):
         self.model_name_default = "modelName_model"
         self.model_name = ""
 
-        self.model_trainer = ModelTrainer() # Instance de ModelTrainer
+        #self.num_iterations = "0"
+
+        self.model_trainer = ModelTrainer # Instance de ModelTrainer
 
         # Définir les paramètres par défaut de l'interface
         self.params = {
-            "num_iterations": 300,
+            "num_iterations": 500,
             "num_classes": 1,
             "roihead_batch_size": 512,
             "real_batch_size": 2,
@@ -69,9 +71,10 @@ class ModelTrainerFrame(ctk.CTkFrame):
         self.param1 = ctk.CTkLabel(self, text="Nombre d'itération", fg_color="white", corner_radius=6)
         self.param1.grid(row=3, column=0, padx=10, pady=10, sticky="ew", columnspan=1)
 
+        #self.param1_option = ctk.CTkEntry(self, placeholder_text="ex: 2000")
         self.param1_option = ctk.CTkOptionMenu(
             self,
-            values=["300", "500", "800", "1000"],
+            values=["500", "1000", "2000", "5000", "10000", "20000", "40000"],
             command=lambda choice: self.optionmenu_callback("num_iterations", choice)
         )
         self.param1_option.grid(row=3, column=1, padx=10, pady=10, sticky="w", columnspan=1)
@@ -93,7 +96,7 @@ class ModelTrainerFrame(ctk.CTkFrame):
 
         self.param3_option = ctk.CTkOptionMenu(
             self,
-            values=["32", "64", "128", "256", "384", "512", "640", "768", "896"],
+            values=["128", "256", "384", "512", "640", "768", "896"],
             command=lambda choice: self.optionmenu_callback("roihead_batch_size", choice)
         )
         self.param3_option.set("512")
@@ -105,7 +108,7 @@ class ModelTrainerFrame(ctk.CTkFrame):
 
         self.param4_option = ctk.CTkOptionMenu(
             self,
-            values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            values=["1", "2", "3", "4", "8", "16"],
             command=lambda choice: self.optionmenu_callback("real_batch_size", choice)
         )
         self.param4_option.set("2")
@@ -117,7 +120,7 @@ class ModelTrainerFrame(ctk.CTkFrame):
 
         self.param5_option = ctk.CTkOptionMenu(
             self,
-            values=["0.00020", "0.00025", "0.00030", "0.00035", "0.00040", "0.00045", "0.00050", "0.00055", "0.00060", "0.00065"],
+            values=["0.001", "0.00020", "0.00025", "0.00030", "0.00035", "0.00040", "0.00045", "0.00050", "0.00055", "0.00060", "0.00065"],
             command=lambda choice: self.optionmenu_callback("learning_rate", choice)
         )
         self.param5_option.set("0.00025")
@@ -186,7 +189,7 @@ class ModelTrainerFrame(ctk.CTkFrame):
         if param_name in ["num_iterations", "num_classes", "roihead_batch_size", "real_batch_size"]:
             self.params[param_name] = int(choice)
         elif param_name == "learning_rate":
-            self.params[param_name] = float(choice) # LR est un float, on pourrait conserver des int en multipliant, mais ce n'est pas tant nécessaire ici
+            self.params[param_name] = float(choice) # LR est un float
         elif param_name == "model_device":
             self.params[param_name] = choice # model device est un string ('cpu' ou 'cuda')
 
@@ -208,12 +211,6 @@ class ModelTrainerFrame(ctk.CTkFrame):
         """
         print(f"Something is happening ! {thing}")
 
-    def get(self):
-        return None
-        #path = []
-        #if self.import_train_button:
-        #    path.append(self.import_train_button.cget("text"))
-
 class ModelUserFrame(ctk.CTkFrame):
     """
     Frame pour l'utilisation du modèle
@@ -224,6 +221,9 @@ class ModelUserFrame(ctk.CTkFrame):
         # Variables globales
         self.img_path = "" # Chemin vers l'image à analyser
         self.img_file_name = os.path.basename(self.img_path) # Nom seul de l'image à analyser
+
+        self.folder_path = ""
+        self.folder_file_name = os.path.basename(self.folder_path)
 
         self.modele_dir = "" # Chemin vers le directory du modèle de prédiction
         self.model_selected = False
@@ -248,25 +248,33 @@ class ModelUserFrame(ctk.CTkFrame):
         self.title = ctk.CTkLabel(self, text="Image analyzer", fg_color="white", corner_radius=6)
         self.title.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew", columnspan=2)
 
-        # Import du fichier image
+        # Import de l'image
         self.import_train_button = ctk.CTkButton(self, text="Import image", command=self.img_path_picker)
         self.import_train_button.grid(column=0, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
-        # Affichage du nom du fichier image
+        # Affichage du nom de l'image
         self.img_path_label = ctk.CTkLabel(self, text=self.img_file_name, fg_color="white", corner_radius=6)
         self.img_path_label.grid(column=1, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
+        # Import du fichier d'images
+        self.import_img_folder_button = ctk.CTkButton(self, text="Import images folder", command=self.folder_path_picker)
+        self.import_img_folder_button.grid(column=0, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+
+        # Affichage du fichier d'images
+        self.img_folder_path_label = ctk.CTkLabel(self, text=self.folder_file_name, fg_color="white", corner_radius=6)
+        self.img_folder_path_label.grid(column=1, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+
         # Import du directory du modèle
         self.import_model_dir_button = ctk.CTkButton(self, text="Import model directory", command=self.model_dir_path_picker)
-        self.import_model_dir_button.grid(column=0, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.import_model_dir_button.grid(column=0, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Affichage du nom du model directory
         self.model_dir_label = ctk.CTkLabel(self, text=self.model_dir_name, fg_color="white", corner_radius=6)
-        self.model_dir_label.grid(column=1, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.model_dir_label.grid(column=1, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Choix de la méthode d'analyse
         self.choose_method_button = ctk.CTkLabel(self, text="Méthode d'analyse :", fg_color="white", corner_radius=6)
-        self.choose_method_button.grid(column=0, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.choose_method_button.grid(column=0, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Options des méthodes d'analyse
         self.choose_methode_optionmenu = ctk.CTkOptionMenu(self,
@@ -274,13 +282,13 @@ class ModelUserFrame(ctk.CTkFrame):
             values=self.methods_dict_keys,
             command=self.method_selected
            )
-        self.choose_methode_optionmenu.grid(column=1, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.choose_methode_optionmenu.grid(column=1, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # TODO afficher un texte qui montre ce que la méthode d'analyse fait
 
         # Entamer la prédiction avec le modèle
         self.begin_pred_button = ctk.CTkButton(self, text="Go !", command=self.run_selected_method)
-        self.begin_pred_button.grid(row=4, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
+        self.begin_pred_button.grid(row=5, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
 
         """
         # Afficher l'image avec les prédictions, stand-by
@@ -294,13 +302,12 @@ class ModelUserFrame(ctk.CTkFrame):
         """
         # Afficher les résultats souhaités
         self.result_textbox = ctk.CTkTextbox(self, width=100, corner_radius=6)
-        self.result_textbox.grid(row=5, column=0, sticky="ew", columnspan=2)
+        self.result_textbox.grid(row=6, column=0, sticky="ew", columnspan=2)
 
     def img_path_picker(self): # TODO Serait cool de pouvoir passer plusieurs images de suite
         """
         Ouvre une boîte d'explorateur de fichier vers le chemin de l'image à passer dans le modèle. \n
         Prend le nom du fichier et l'applique au label 'img_file_name' dans l'interface.
-        :return: None
         """
         root = tk.Tk()
         root.withdraw()
@@ -313,11 +320,27 @@ class ModelUserFrame(ctk.CTkFrame):
         self.img_file_name = os.path.basename(self.img_path)
         self.img_path_label.configure(text=self.img_file_name)
 
+    def folder_path_picker(self):
+        """
+
+        :return:
+        """
+        root = tk.Tk()
+        root.withdraw()
+
+        self.folder_path = filedialog.askdirectory(
+            mustexist=True,
+            initialdir="machine_learning_model/datasets",
+            title="choisir un fichier d'images à analyser"
+        )
+        root.destroy()
+        self.folder_file_name = os.path.basename(self.folder_path)
+        self.img_folder_path_label.configure(text=self.folder_file_name)
+
     def model_dir_path_picker(self):
         """
         Ouvre une boîte d'explorateur de fichier vers le chemin du directory du modèle à utilisé \n
         Prend le nom du fichier et l'applique au label 'img_file_name' dans l'interface.
-        :return: None
         """
         root = tk.Tk()
         root.withdraw()

@@ -19,21 +19,29 @@ from detectron2.structures import BoxMode
 from detectron2.data.datasets import register_coco_instances, load_coco_json
 
 class ModelTrainer:
-    def __init__(self, num_iterations=300, num_classes=1, roihead_batch_size=512, real_batch_size=2,
-                 learning_rate=0.00025, model_device='cpu'):
+    def __init__(self, num_iterations, num_classes, roihead_batch_size, real_batch_size,
+                 learning_rate, model_device):
         self.cfg = get_cfg()
-        self.cfg.MODEL.DEVICE = model_device
+
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+
         self.cfg.DATASETS.TRAIN = ("my_dataset_train",)
         self.cfg.DATASETS.TEST = ()
+
         self.cfg.DATALOADER.NUM_WORKERS = 2
+
+        self.cfg.MODEL.DEVICE = model_device
+        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
+        self.cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = roihead_batch_size
         self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
-        self.cfg.SOLVER.IMS_PER_BATCH = real_batch_size
-        self.cfg.SOLVER.BASE_LR = learning_rate
+
+        self.cfg.INPUT.MASK_FORMAT = "polygon" # ajouté pour tests 23-07-2025
+
         self.cfg.SOLVER.MAX_ITER = num_iterations
         self.cfg.SOLVER.STEPS = []
-        self.cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = roihead_batch_size
-        self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
+        self.cfg.SOLVER.REFERENCE_WORLD_SIZE = 1 # number of workers (GPUs) this config is meant to train with. ! n'est pas implémenté encore !
+        self.cfg.SOLVER.BASE_LR = learning_rate
+        self.cfg.SOLVER.IMS_PER_BATCH = real_batch_size
 
         # Légende des paramètres :
         """
@@ -42,7 +50,7 @@ class ModelTrainer:
         (https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5)
         ===============================================================================
         cfg.MODEL.WEIGHTS: Let training initialize from model zoo
-        cfg.SOLVER.IMS_PER_BATCH: This is the real "batch size" commonly known to deep learning people, 2 by default
+        cfg.SOLVER.IMS_PER_BATCH: Number of images per batch across all machines. This is also the number of training images per step (i.e. per iteration).
         cfg.SOLVER.BASE_LR: pick a good LR
         cfg.SOLVER.MAX_ITER: 300 iterations seems good enough for this toy dataset; you will need to train longer for a practical dataset
         cfg.SOLVER.STEPS = []: do not decay learning rate
@@ -63,6 +71,7 @@ class ModelTrainer:
 
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=False)
 
+        torch.cuda.empty_cache()
         trainer = DefaultTrainer(self.cfg)
         trainer.resume_or_load(resume=False)
         trainer.train()
