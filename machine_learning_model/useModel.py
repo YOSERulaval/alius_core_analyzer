@@ -2,7 +2,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
 import numpy as np
-import os, cv2, pandas as pd
+import os, cv2, glob, pandas as pd
 from detectron2.utils.visualizer import Visualizer, ColorMode
 from sympy.printing.pytorch import torch
 
@@ -94,6 +94,7 @@ class ModelPredictor:
         Auteur : Yohan Sercia \n
         Dernière MAJ : 25-07-2025 \n
         Description : Méthode simpliste d'analyse de joint \n
+        :param cumulative_px:
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des joints, en ordre
         """
@@ -257,14 +258,19 @@ class ModelPredictor:
     def analyze_folder(self, folder_path):
         """
         Auteur : Yohan Sercia \n
-        Dernière MAJ : 25-07-2025 \n
+        Dernière MAJ : 28-07-2025 \n
         Description : Méthode simpliste d'analyse de joint \n
-        :param folder_path: Chemin vers l'image à analyser
+        :param folder_path: Chemin vers le fichier d'images à analyser
         :return: La position relative des runs et des fractures
         """
         all_core_runs = []
 
-        image_files = os.listdir(folder_path)
+        image_files = sorted(
+        glob.glob(os.path.join(folder_path, "*.jpg")) +
+        glob.glob(os.path.join(folder_path, "*.jpeg")) +
+        glob.glob(os.path.join(folder_path, "*.png")),
+        key = last_4chars
+    )
 
         if not image_files:
             print("Aucune image trouvée dans le dossier spécifié.")
@@ -296,6 +302,7 @@ class ModelPredictor:
             "Test avec image": self.analyze_example,
             # etc ...
         }
+
 
 class CoreRun:
     """
@@ -378,6 +385,9 @@ def pixel_to_meter(core_runs_sorted, core_diameter):
     d_average = sum(heights) / len(heights) # moyenne
 
     return d_core / d_average
+
+def last_4chars(x):
+    return x[-4:]
 
 def clean_cache():
     """

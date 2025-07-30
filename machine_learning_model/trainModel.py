@@ -28,19 +28,21 @@ class ModelTrainer:
         self.cfg.DATASETS.TRAIN = ("my_dataset_train",)
         self.cfg.DATASETS.TEST = ()
 
-        self.cfg.DATALOADER.NUM_WORKERS = 2
+        self.cfg.DATALOADER.NUM_WORKERS = 4
 
         self.cfg.MODEL.DEVICE = model_device
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
         self.cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = roihead_batch_size
         self.cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
 
-        self.cfg.INPUT.MASK_FORMAT = "polygon" # ajouté pour tests 23-07-2025
+        #self.cfg.INPUT.MASK_FORMAT = "polygon" # ajouté pour tests 23-07-2025
 
         self.cfg.SOLVER.MAX_ITER = num_iterations
+        self.cfg.SOLVER.CHECKPOINT_PERIOD = 1000
         self.cfg.SOLVER.STEPS = []
-        self.cfg.SOLVER.REFERENCE_WORLD_SIZE = 1 # number of workers (GPUs) this config is meant to train with. ! n'est pas implémenté encore !
+        #self.cfg.SOLVER.REFERENCE_WORLD_SIZE = 1 # number of workers (GPUs) this config is meant to train with. ! n'est pas implémenté encore !
         self.cfg.SOLVER.BASE_LR = learning_rate
+        self.cfg.SOLVER.MOMENTUM = 0.9
         self.cfg.SOLVER.IMS_PER_BATCH = real_batch_size
 
         # Légende des paramètres :
@@ -68,10 +70,10 @@ class ModelTrainer:
         output_dir = os.path.join(models_dir, model_name)
 
         self.cfg.OUTPUT_DIR = output_dir # Assignation de ce path au modèle qui sera entrainé
+        self.cfg.SEED = 1
 
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=False)
 
-        torch.cuda.empty_cache()
         trainer = DefaultTrainer(self.cfg)
         trainer.resume_or_load(resume=False)
         trainer.train()
