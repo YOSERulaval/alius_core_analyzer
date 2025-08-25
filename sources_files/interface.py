@@ -229,14 +229,11 @@ class ModelUserFrame(ctk.CTkFrame):
         self.model_selected = False
         self.model_dir_name = os.path.basename(self.modele_dir) # Nom seul du modèle de prédiction
 
+        self.num_class = "" # Nombre de classe (d'annotation) à passer au constructeur de 'useModel'
+
         self.result_text = "" # Sortie dans la boîte de texte de l'analyse
 
         self.grid_columnconfigure(1, weight=1) # Pour la mise en page
-
-        #self.model_predictor = ModelPredictor(self.modele_dir)  # Instance de ModelPredictor
-
-        #self.methods_dict = self.model_predictor.get_methods()
-        #self.selected_method = list(self.methods_dict.keys())[0] # On choisi la première méthode d'analyse par défaut
 
         # Empty fields en attendant l'appel de model_dir_path_picker
         self.model_predictor = None
@@ -264,45 +261,42 @@ class ModelUserFrame(ctk.CTkFrame):
         self.img_folder_path_label = ctk.CTkLabel(self, text=self.folder_file_name, fg_color="white", corner_radius=6)
         self.img_folder_path_label.grid(column=1, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
 
+        # Label pour le nombre de classe à passer au constructeur
+        self.choose_number_of_class_label = ctk.CTkLabel(self, text="Nombre de classe", fg_color="white", corner_radius=6)
+        self.choose_number_of_class_label.grid(column=0, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+
+        # Input pour le nombre de classe à passer au constructeur
+        self.choose_number_of_class_entry = ctk.CTkEntry(self, placeholder_text="1, 2, 3, ...", fg_color="white", corner_radius=6)
+        self.choose_number_of_class_entry.grid(column=1, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+
         # Import du directory du modèle
         self.import_model_dir_button = ctk.CTkButton(self, text="Import model directory", command=self.model_dir_path_picker)
-        self.import_model_dir_button.grid(column=0, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.import_model_dir_button.grid(column=0, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Affichage du nom du model directory
         self.model_dir_label = ctk.CTkLabel(self, text=self.model_dir_name, fg_color="white", corner_radius=6)
-        self.model_dir_label.grid(column=1, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.model_dir_label.grid(column=1, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Choix de la méthode d'analyse
         self.choose_method_button = ctk.CTkLabel(self, text="Méthode d'analyse :", fg_color="white", corner_radius=6)
-        self.choose_method_button.grid(column=0, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.choose_method_button.grid(column=0, row=5, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Options des méthodes d'analyse
         self.choose_methode_optionmenu = ctk.CTkOptionMenu(self,
-            #values=list(self.methods_dict.keys()),
             values=self.methods_dict_keys,
             command=self.method_selected
            )
-        self.choose_methode_optionmenu.grid(column=1, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
+        self.choose_methode_optionmenu.grid(column=1, row=5, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # TODO afficher un texte qui montre ce que la méthode d'analyse fait
 
         # Entamer la prédiction avec le modèle
         self.begin_pred_button = ctk.CTkButton(self, text="Go !", command=self.run_selected_method)
-        self.begin_pred_button.grid(row=5, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
+        self.begin_pred_button.grid(row=6, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
 
-        """
-        # Afficher l'image avec les prédictions, stand-by
-        self.pred_image_canvas = ctk.CTkCanvas(self, width=300, height=300, corner_radius=6)
-        self.pred_image_canvas.grid(column=0, row=3, padx=10, pady=10, sticky="ew", columnspan=2)
-
-        self.img = Image.open("sources_files/assets/images/Alius_FR.png")
-        self.resized_image = self.img.resize((300, 300))
-        self.image = ImageTk.PhotoImage(self.resized_image)
-        self.my_image = self.pred_image_canvas.create_image(300, 300, image=self.image, anchor="nw")
-        """
         # Afficher les résultats souhaités
-        self.result_textbox = ctk.CTkTextbox(self, width=100, corner_radius=6)
-        self.result_textbox.grid(row=6, column=0, sticky="ew", columnspan=2)
+        #self.result_textbox = ctk.CTkTextbox(self, width=100, corner_radius=6)
+        #self.result_textbox.grid(row=7, column=0, sticky="ew", columnspan=2)
 
     def img_path_picker(self): # TODO Serait cool de pouvoir passer plusieurs images de suite
         """
@@ -353,7 +347,8 @@ class ModelUserFrame(ctk.CTkFrame):
         self.model_selected = True if self.modele_dir else False
 
         if self.model_selected:
-            self.model_predictor = ModelPredictor(model_dir=self.modele_dir)  # Instance de ModelPredictor lorsqu'un model_dir existe
+            self.num_class = int(self.choose_number_of_class_entry.get())
+            self.model_predictor = ModelPredictor(model_dir=self.modele_dir, num_classes=self.num_class)  # Instance de ModelPredictor lorsqu'un model_dir existe
 
             self.methods_dict = self.model_predictor.get_methods() # Initialisation du dictionnaire qui contient les méthodes d'analyses
 
