@@ -2,8 +2,7 @@
 Application d'analyse de 'core' utilisant du ML.
 
 # Que fait ce code ?
-Pour l'instant, l'idée est d'utiliser plusieurs modèle entraîner à l'aide des modèles par défaut de la librairie *detectron2*.
-Un premier modèle s'assure que les images à étudier sont du bon format (cropped, normalized). Un deuxième s'occupera de l'analyse des cores.
+Le code est un génère (vers un output directory) un modèle AI entraîné et testé à l'aide d'un dataset 'train' et 'val'.
 
 ## Image Cropper
 D'abord, l'application gère le formatage des images:
