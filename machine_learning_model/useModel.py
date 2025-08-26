@@ -355,15 +355,16 @@ class CoreRun:
 
     def real_core_measure(self):
         fracture_positions = sorted([f.distance_m for f in self.fractures]) # on tri d'abord toutes les fractures dans la liste
-        fracture_positions = [0] + fracture_positions + [self.length_m]
+        fracture_positions = [0] + fracture_positions + [self.length_m] # Ajout de bornes inférieur-extérieur
 
-        total_rqd_length = 0
+        total_rqd_length = self.length_m # On commence avec la longueur totale du core
 
         for idx in range(len(fracture_positions) - 1):
             segment_length = fracture_positions[idx + 1] - fracture_positions[idx] # calcul de la diff entre deux joints
 
-            if segment_length >= 0.1:
-                total_rqd_length += segment_length
+            # Calcul du RQD: On retire tous les éléments de moins de 10 cm
+            if segment_length < 0.1:
+                total_rqd_length -= segment_length
 
         for fracture in self.fractures:
             if fracture.fracture_type != "joint":
