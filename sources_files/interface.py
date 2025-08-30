@@ -2,11 +2,10 @@ import os
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog
+from PIL import Image
 
-from PIL import Image, ImageTk
-
-from machine_learning_model.useModel import ModelPredictor
-from machine_learning_model.trainModel import ModelTrainer
+from sources_files.useModel import ModelPredictor
+from sources_files.trainModel import ModelTrainer
 
 
 class ModelTrainerFrame(ctk.CTkFrame):
@@ -27,7 +26,7 @@ class ModelTrainerFrame(ctk.CTkFrame):
         self.dataset_file_name = os.path.basename(self.dataset_path)
 
         # Nom du modèle entraîné. Input par l'utilisateur, utile pour entraîner plusieurs modèles différents
-        self.model_name_default = "modelName_model"
+        self.model_name_default = "modèleNom_model"
         self.model_name = ""
 
         #self.num_iterations = "0"
@@ -47,16 +46,16 @@ class ModelTrainerFrame(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Titre du frame
-        self.title = ctk.CTkLabel(self, text="Model Trainer", fg_color="white", corner_radius=6)
+        self.title = ctk.CTkLabel(self, text="Entraîneur de modèle", fg_color="white", corner_radius=6)
         self.title.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew", columnspan=2)
 
         # Boutons d'import/export des dataset
         # Importer un fichier json avec les annotations pour entraînement
-        self.import_train_button = ctk.CTkButton(self, text="Import COCO annotations", command=self.coco_path_picker)
+        self.import_train_button = ctk.CTkButton(self, text="Importer annotations COCO", command=self.coco_path_picker)
         self.import_train_button.grid(column=0, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Importer un fichier json avec les annotations pour test
-        self.import_test_button = ctk.CTkButton(self, text="Import training dataset", command=self.dataset_path_picker)
+        self.import_test_button = ctk.CTkButton(self, text="Importer données d'entraînement", command=self.dataset_path_picker)
         self.import_test_button.grid(column=0, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Afficheur de nom des fichiers sélectionnés (pour train et test)
@@ -142,11 +141,11 @@ class ModelTrainerFrame(ctk.CTkFrame):
         self.model_name_entry.grid(row=9, column=0, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Bouton de sauvegarde du nom du modèle
-        self.model_name_entry_btn = ctk.CTkButton(self, text="Save Name", corner_radius=6, command=self.save_model_name)
+        self.model_name_entry_btn = ctk.CTkButton(self, text="Sauvegarder le nom", corner_radius=6, command=self.save_model_name)
         self.model_name_entry_btn.grid(row=9, column=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Begin training button
-        self.train_button = ctk.CTkButton(self, text="Train !", corner_radius=6, command=self.train_button_callback)
+        self.train_button = ctk.CTkButton(self, text="Entraîner un modèle avec ces options", corner_radius=6, command=self.train_button_callback)
         self.train_button.grid(row=10, column=0, padx=10, pady=10, sticky="ew", columnspan=2)
 
     def coco_path_picker(self):
@@ -242,11 +241,11 @@ class ModelUserFrame(ctk.CTkFrame):
         self.selected_method = self.methods_dict_keys[:-1]
 
         # Titre du frame
-        self.title = ctk.CTkLabel(self, text="Image analyzer", fg_color="white", corner_radius=6)
+        self.title = ctk.CTkLabel(self, text="Prédicteur", fg_color="white", corner_radius=6)
         self.title.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="ew", columnspan=2)
 
         # Import de l'image
-        self.import_train_button = ctk.CTkButton(self, text="Import image", command=self.img_path_picker)
+        self.import_train_button = ctk.CTkButton(self, text="Importer une image", command=self.img_path_picker)
         self.import_train_button.grid(column=0, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Affichage du nom de l'image
@@ -254,7 +253,7 @@ class ModelUserFrame(ctk.CTkFrame):
         self.img_path_label.grid(column=1, row=1, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Import du fichier d'images
-        self.import_img_folder_button = ctk.CTkButton(self, text="Import images folder", command=self.folder_path_picker)
+        self.import_img_folder_button = ctk.CTkButton(self, text="Importer un fichier d'images", command=self.folder_path_picker)
         self.import_img_folder_button.grid(column=0, row=2, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Affichage du fichier d'images
@@ -270,7 +269,7 @@ class ModelUserFrame(ctk.CTkFrame):
         self.choose_number_of_class_entry.grid(column=1, row=3, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Import du directory du modèle
-        self.import_model_dir_button = ctk.CTkButton(self, text="Import model directory", command=self.model_dir_path_picker)
+        self.import_model_dir_button = ctk.CTkButton(self, text="Importer un modèle", command=self.model_dir_path_picker)
         self.import_model_dir_button.grid(column=0, row=4, padx=10, pady=10, sticky="ew", columnspan=1)
 
         # Affichage du nom du model directory
@@ -392,6 +391,7 @@ class ModelUserFrame(ctk.CTkFrame):
         :param chosen_method: Méthode d'analyse utilisée dans la prédiction
         :return: String des données souhaitées.
         """
+
         #self.model_predictor = ModelPredictor(model_dir=self.modele_dir)  # Instance de ModelPredictor
         #self.method_dict = self.model_predictor.get_methods()
 
@@ -402,23 +402,34 @@ class ModelUserFrame(ctk.CTkFrame):
                                 f"=======================================\n"
                                 f"Aire de {class_names[0]}: {class_area['cz']} px\n"
                             )
-        self.result_textbox.insert("0.0", self.result_text)
+        #self.result_textbox.insert("0.0", self.result_text)
         return self.result_text
         #print(f"Aires calculées (pixels): {areas}")
         #print(f"Rapport broken/full : <{ratio:.2f}%> pour l'image : <{image_name}>.")
-        # TODO 2 : exporter résultats vers excel éventuellement
 
 class App(ctk.CTk):
     """
     Gestionnaire de l'application
     """
-    def __init__(self):
-        super().__init__()
+    width = 800
+    height = 550
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        self.title("my app")
-        self.geometry("700x600")
+        # Titre et logo
+        self.title("Analyseur de Carotte Alius")
+        self.iconbitmap("sources_files/assets/images/Alius_logo_3.ico")
+
+        # Géométrie de la fenêtre
+        self.geometry(f"{self.width}x{self.height}")
+        self.resizable(False, False)
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        # Image d'arrière plan
+        self.bg_image = ctk.CTkImage(Image.open("sources_files/assets/images/Alius_logo_1.png"), size=(200, 200))
+        self.bg_image_label = ctk.CTkLabel(self, image=self.bg_image, text="")
+        self.bg_image_label.grid(row=0, column=1, columnspan=1, sticky="sew")
 
         # Frame de l'interface pour l'initialisation
         self.model_trainer_frame = ModelTrainerFrame(self)

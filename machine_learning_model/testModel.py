@@ -1,22 +1,10 @@
 # import de trainModel.py
-import trainModel as tm
+from sources_files import trainModel as tm
 
 # import some common libraries
-import numpy as np
-import os, json, cv2, random
-import tkinter as tk
-from tkinter import filedialog
-from PIL import Image
 
 # import some common detectron2 utilities
-from detectron2 import model_zoo
-from detectron2.engine import DefaultPredictor, DefaultTrainer
-from detectron2.config import get_cfg
-from detectron2.utils.visualizer import Visualizer, ColorMode
-from detectron2.data import MetadataCatalog, DatasetCatalog
-from detectron2.structures import BoxMode
-
-from detectron2.data.datasets import register_coco_instances, load_coco_json
+from detectron2.utils.visualizer import ColorMode
 
 # Inference should use the config with parameters that are used in training
 # cfg now already contains everything we've set previously. We changed it a little bit for inference:

@@ -8,7 +8,7 @@ from sympy.printing.pytorch import torch
 
 # TODO revoir l'organisation des fonctions/méthodes
 class ModelPredictor:
-    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8): # TODO num_classes n'est pas dynamique ? À vérifier
+    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8):
         # ----------------------------------Ne pas modifier cette partie-----------------------------------------------#
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -96,7 +96,7 @@ class ModelPredictor:
         """
         Auteur : Yohan Sercia \n
         Dernière MAJ : 06-08-2025 \n
-        Description : Méthode appellée via "analyze_folder" qui analyse tous les cores dans une image ainsi que leurs
+        Description : Méthode appelée via "analyze_folder" qui analyse tous les cores dans une image ainsi que leurs
         fractures. \n
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des fractures, en ordre
@@ -217,8 +217,11 @@ class ModelPredictor:
                 "core_run_id": f"{core.img_name}_Core_{idx}",
                 "from": core.start_m,
                 "to": core.end_m,
+                " ": " ", # espacement
                 "run_length": core.length_m,
-                "RQD (%)": core.core_rqd
+                "rqd_length": core.total_rqd_length,
+                "RQD (%)": core.core_rqd,
+                "": " ", # espacement
             }
 
             if core.fractures:
@@ -254,16 +257,19 @@ class ModelPredictor:
 
         # Largeur des colonnes
         column_widths = {
-            'A': 20,  # img_name
-            'B': 30,  # core_run_id
+            'A': 30,  # img_name
+            'B': 35,  # core_run_id
             'C': 10,  # from
             'D': 10,  # to
-            'E': 12,  # run_length
-            'F': 10,  # RQD (%)
-            'G': 42,  # fracture_id
-            'H': 15,  # fracture_type
-            'I': 15,  # position_m
-            'J': 15   # length_m
+            'E': 3,   # --space--
+            'F': 12,  # run_length
+            'G': 12,  # total_rqd_length
+            'H': 10,  # RQD (%)
+            'I': 3,   # --space--
+            'J': 42,  # fracture_id
+            'K': 15,  # fracture_type
+            'L': 15,  # position_m
+            'M': 15   # length_m
         }
 
         for col_letter, width in column_widths.items():
@@ -348,6 +354,7 @@ class CoreRun:
         self.length_m = None
 
         self.fractures_length = None
+        self.total_rqd_length = None
         self.core_rqd = None
 
     def add_fracture(self, fracture):
@@ -357,20 +364,20 @@ class CoreRun:
         fracture_positions = sorted([f.distance_m for f in self.fractures]) # on tri d'abord toutes les fractures dans la liste
         fracture_positions = [0] + fracture_positions + [self.length_m] # Ajout de bornes inférieur-extérieur
 
-        total_rqd_length = self.length_m # On commence avec la longueur totale du core
+        self.total_rqd_length = self.length_m # On commence avec la longueur totale du core
 
         for idx in range(len(fracture_positions) - 1):
             segment_length = fracture_positions[idx + 1] - fracture_positions[idx] # calcul de la diff entre deux joints
 
             # Calcul du RQD: On retire tous les éléments de moins de 10 cm
             if segment_length < 0.1:
-                total_rqd_length -= segment_length
+                self.total_rqd_length -= segment_length
 
         for fracture in self.fractures:
             if fracture.fracture_type != "joint":
-                total_rqd_length -= fracture.length_m
+                self.total_rqd_length -= fracture.length_m
 
-        self.core_rqd = (total_rqd_length / self.length_m) * 100 # Calcul du RQD
+        self.core_rqd = (self.total_rqd_length / self.length_m) * 100 # Calcul du RQD
 
 
 class Fracture:
