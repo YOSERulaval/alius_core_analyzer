@@ -1,0 +1,155 @@
+from sympy.physics.units import length
+
+
+def export_core_runs_to_excel(core_runs, output_name, output_path):
+    """
+    Auteur : ChatGPT + Yohan Sercia
+    Dernière MAJ : 21-09-2025
+    Description : Exporte dans un fichier Excel avec deux onglets :
+      - Core_Runs  : info des runs (sans colonnes de fractures), dédupliqué
+      - Fractures  : mêmes colonnes que l'export actuel (avec fractures)
+    """
+    import pandas as pd
+    from openpyxl import load_workbook
+    from openpyxl.styles import numbers
+    import numpy as np
+    import os
+
+    # -------- 1) Construire les deux tableaux --------
+    fractures_rows = []
+    core_rows = []
+
+    for idx, core in enumerate(core_runs):
+        # L'identifiant de run reste indexé dans l’ordre d’apparition par image :
+        core_id = f"{core.img_name}_Core_{idx}"
+
+        core_base = {
+            "img_name": core.img_name,
+            "core_run_id": core_id,
+            "from": core.start_m,
+            "to": core.end_m,
+            "run_length": core.length_m,
+            "rqd_length": getattr(core, "total_rqd_length", None),
+            "RQD (%)": getattr(core, "core_rqd", None),
+        }
+
+        # ---- Feuille "Core_Runs" : uniquement les colonnes de run (une ligne par run)
+        core_rows.append(core_base.copy())
+
+        # ---- Feuille "Fractures" : même format qu’actuellement (core + fractures)
+        TYPES_WITH_LENGTH = {"broken_core", "fault"} # largeur des discon seulement pour ceux là
+
+        if core.fractures:
+            for f_idx, f in enumerate(core.fractures):
+                row = {
+                    **core_base,
+                    " ": " ",  # espacement
+                    "fracture_id": f"{core_id}_{f.fracture_type}_{f_idx}",
+                    "fracture_type": f.fracture_type,
+                    "position_m": f.distance_m,
+                    "length_m": f.length_m if f.fracture_type in TYPES_WITH_LENGTH else None,
+                    "": " ",  # espacement
+                }
+            fractures_rows.append(row)
+
+        else:
+            # Même logique que ton export actuel : si aucune fracture, on met une ligne "vide"
+            row = {
+                **core_base,
+                " ": " ",
+                "fracture_id": None,
+                "fracture_type": None,
+                "position_m": None,
+                "length_m": None,
+                "": " "
+            }
+            fractures_rows.append(row)
+
+    cores_df = pd.DataFrame(core_rows)
+    fractures_df = pd.DataFrame(fractures_rows)
+
+    # -------- 2.1) Dédupe des runs (Core_Runs) --------
+    # On arrondit les flottants utilisés pour la clé de dédup (prévient les petits écarts binaires).
+    for col in ["from", "to", "run_length", "rqd_length", "RQD (%)"]:
+        if col in cores_df.columns:
+            cores_df[col] = cores_df[col].astype(float).round(6)
+
+    dedup_key = ["img_name", "from", "to", "run_length", "rqd_length", "RQD (%)"]
+    cores_df = cores_df.drop_duplicates(subset=dedup_key, keep="first").reset_index(drop=True)
+
+    # -------- 2.2) Colonnes pertinentes pour les fractures --------
+    fracture_cols = [
+        "img_name",
+        "core_run_id",
+        "fracture_id",
+        "fracture_type",
+        "position_m",
+        "length_m",
+    ]
+
+    # Re-indexe pour obtenir exactement ces colonnes (celles manquantes seront créées vides)
+    fractures_df = fractures_df.reindex(columns=fracture_cols)
+
+    # Arrondi léger sur les colonnes numériques
+    for col in ["position_m", "length_m"]:
+        if col in fractures_df.columns:
+            fractures_df[col] = pd.to_numeric(fractures_df[col], errors="coerce").round(6)
+
+    # -------- 3) Sauvegarde Excel --------
+    excel_path = os.path.join(output_path, f"{output_name}_cores_fractures.xlsx")
+
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        cores_df.to_excel(writer, sheet_name="Geotech", index=False)
+        fractures_df.to_excel(writer, sheet_name="Discontinuities", index=False)
+
+    # -------- 4) Formatage openpyxl --------
+    wb = load_workbook(excel_path)
+
+    # -- Core_Runs
+    ws_core = wb["Geotech"]
+    core_col_widths = {
+        'A': 30,  # img_name
+        'B': 35,  # core_run_id
+        'C': 10,  # from
+        'D': 10,  # to
+        'E': 12,  # run_length
+        'F': 12,  # rqd_length
+        'G': 10,  # RQD (%)
+    }
+    for col, w in core_col_widths.items():
+        ws_core.column_dimensions[col].width = w
+
+    # Format numérique : 2 décimales à partir de la colonne C (numériques)
+    for row in ws_core.iter_rows(min_row=2, max_row=ws_core.max_row, min_col=3, max_col=ws_core.max_column):
+        for cell in row:
+            if isinstance(cell.value, (float, int)) and cell.value is not None:
+                cell.number_format = '0.00'
+
+    # -- Fractures
+    ws_frac = wb["Discontinuities"]
+    frac_col_widths = {
+        'A': 30,  # img_name
+        'B': 35,  # core_run_id
+        'C': 10,  # from
+        'D': 10,  # to
+        'E': 12,  # run_length
+        'F': 12,  # rqd_length
+        'G': 10,  # RQD (%)
+        'H': 3,   # " " (espacement)
+        'I': 42,  # fracture_id
+        'J': 15,  # fracture_type
+        'K': 15,  # position_m
+        'L': 15,  # length_m
+        'M': 3,   # "" (espacement)
+    }
+    for col, w in frac_col_widths.items():
+        ws_frac.column_dimensions[col].width = w
+
+    # 2 décimales pour les colonnes numériques (à partir de C)
+    for row in ws_frac.iter_rows(min_row=2, max_row=ws_frac.max_row, min_col=3, max_col=ws_frac.max_column):
+        for cell in row:
+            if isinstance(cell.value, (float, int)) and cell.value is not None:
+                cell.number_format = '0.00'
+
+    wb.save(excel_path)
+    print(f"Données exportées vers : {excel_path}")

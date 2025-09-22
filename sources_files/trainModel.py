@@ -65,7 +65,8 @@ class ModelTrainer:
         register_coco_instances("my_dataset_train", {}, coco_path, dataset_path)
 
         # On cherche (et trouve) le sous fichier "trained_models", sinon on le créé
-        root_dir = os.path.dirname(os.path.abspath(__file__))
+        #root_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = 'machine_learning_model'
         models_dir = os.path.join(root_dir, "trained_models")
         output_dir = os.path.join(models_dir, model_name)
 

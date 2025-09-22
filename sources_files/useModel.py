@@ -5,10 +5,11 @@ import numpy as np
 import os, cv2, glob, pandas as pd
 from detectron2.utils.visualizer import Visualizer, ColorMode
 from sympy.printing.pytorch import torch
+from sources_files import excelExport as ee
 
 # TODO revoir l'organisation des fonctions/méthodes
 class ModelPredictor:
-    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8):
+    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8, output_path='', project_name='Project COG-25-10'):
         # ----------------------------------Ne pas modifier cette partie-----------------------------------------------#
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -22,6 +23,13 @@ class ModelPredictor:
         self.pixel_to_meter_ratio = 0.0
 
         self.predictor = DefaultPredictor(self.cfg) # type de prédicteur, via Detectron2
+
+        # Nommer et créer le dossier des outputs du projet
+        self.output_path = output_path
+        self.project_name = project_name
+
+        from sources_files import utilitiesMethods as utils
+        self.output_path = utils.make_new_dir(project_name)
 
         #torch.cuda.empty_cache() # vider la cache avant chaque run
         # -------------------------------------------------------------------------------------------------------------#
@@ -74,6 +82,45 @@ class ModelPredictor:
         cv2.destroyAllWindows()
 
         return class_names, class_area, img_name
+
+    def __output_prediction(self, img_path, output_dir, class_names=None):
+        """
+        Auteur : Yohan Sercia \n
+        Dernière MAJ : 22-09-2025 \n
+        Description : Méthode privée, permet de sauvegarder l'image avec les masks de prédictions. \n
+        :param img_path: Chemin vers l'image à analyser
+        :param output_dir:
+        :param class_names: Nom de la ou les classes présentes dans l'annotation
+        """
+        from detectron2.data import MetadataCatalog
+
+        img = cv2.imread(img_path)
+        outputs = self.predictor(img)
+        instances = outputs["instances"].to("cpu")
+
+        # Préparer la metadata pour afficher des noms de classes lisibles
+        metadata = None
+        if class_names:
+            # On utilise un catalogue temporaire dédié à l'inférence
+            MetadataCatalog.get("__inference__").set(thing_classes=class_names)
+            metadata = MetadataCatalog.get("__inference__")
+
+        # Dessin de l'overlay (RGB pour Visualizer, BGR pour OpenCV)
+        v = Visualizer(
+            img[:, :, ::-1],
+            metadata=metadata,
+            scale=0.8,
+            instance_mode=ColorMode.IMAGE_BW
+        )
+        out = v.draw_instance_predictions(instances)
+        overlay = out.get_image()[:, :, ::-1]  # repasser en BGR pour cv2.imwrite
+
+        # Nom de sortie : <nom>_pred.<ext>
+        stem, ext = os.path.splitext(os.path.basename(img_path))
+        out_path = os.path.join(output_dir, f"{stem}_pred{ext or '.png'}")
+        os.makedirs(output_dir, exist_ok=True)
+        cv2.imwrite(out_path, overlay)
+        print(f"Overlay sauvegardé : {out_path}")
 
     # Méthodes s'occupant de l'analyse, pourrait être implémenté dynamiquement selon les inputs du user (P3)
     def analyze_example(self, img_path):
@@ -197,96 +244,6 @@ class ModelPredictor:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    @staticmethod
-    def export_core_runs_to_excel(core_runs, output_name):
-        """
-        Auteur : Yohan Sercia \n
-        Dernière MAJ : 05-08-2025 \n
-        Description : Pour analyser plusieurs images consécutives vers Excel \n
-        :param core_runs:
-        :param output_name:
-        """
-        from openpyxl.utils import get_column_letter
-        from openpyxl import load_workbook
-
-        all_data = []
-
-        for idx, core in enumerate(core_runs):
-            core_data = {
-                "img_name": core.img_name,
-                "core_run_id": f"{core.img_name}_Core_{idx}",
-                "from": core.start_m,
-                "to": core.end_m,
-                " ": " ", # espacement
-                "run_length": core.length_m,
-                "rqd_length": core.total_rqd_length,
-                "RQD (%)": core.core_rqd,
-                "": " ", # espacement
-            }
-
-            if core.fractures:
-                for f_idx, fracture in enumerate(core.fractures):
-                    fracture_data = {
-                        **core_data,
-                        "fracture_id": f"{core_data['core_run_id']}_{fracture.fracture_type}_{f_idx}",
-                        "fracture_type": fracture.fracture_type,
-                        "position_m": fracture.distance_m,
-                        "length_m": fracture.length_m,
-                    }
-                    all_data.append(fracture_data)
-            else:
-                no_fracture_data = {
-                    **core_data,
-                    "fracture_id": None,
-                    "fracture_type": None,
-                    "position_m": None,
-                    "length_m": None
-                }
-                all_data.append(no_fracture_data)
-
-        df = pd.DataFrame(all_data) # sauvegarde des données excel dans variable df (dataframe)
-
-        # Sauvegarde du dataframe
-        excel_path = f"{output_name}_cores_fractures.xlsx"
-        df.to_excel(excel_path, sheet_name="Batch_Fractures", index=False)
-
-        # Formatage de la sortie Excel:
-        # Ouverture avec OpenPyXL pour formatage précis
-        workbook = load_workbook(excel_path)
-        worksheet = workbook["Batch_Fractures"]
-
-        # Largeur des colonnes
-        column_widths = {
-            'A': 30,  # img_name
-            'B': 35,  # core_run_id
-            'C': 10,  # from
-            'D': 10,  # to
-            'E': 3,   # --space--
-            'F': 12,  # run_length
-            'G': 12,  # total_rqd_length
-            'H': 10,  # RQD (%)
-            'I': 3,   # --space--
-            'J': 42,  # fracture_id
-            'K': 15,  # fracture_type
-            'L': 15,  # position_m
-            'M': 15   # length_m
-        }
-
-        for col_letter, width in column_widths.items():
-            worksheet.column_dimensions[col_letter].width = width
-
-        from openpyxl.styles import numbers
-
-        for row in worksheet.iter_rows(min_row=2, max_row=worksheet.max_row,
-                                       min_col=3, max_col=worksheet.max_column):
-            for cell in row:
-                if isinstance(cell.value, float):
-                    cell.number_format = '0.00'  # format précis avec 2 chiffres après la virgule
-
-        workbook.save(excel_path)
-
-        print(f"Données exportées vers : {excel_path}")
-
     def analyze_folder(self, folder_path):
         """
         Auteur : Yohan Sercia \n
@@ -312,6 +269,8 @@ class ModelPredictor:
         for img_path in image_files:
             print(f"Analyse de l'image : {img_path}")
             core_runs_sorted = self.analyze_cores(img_path)
+            self.__output_prediction(img_path, self.output_path)
+
 
             # Ajouter chaque résultat clairement à une liste globale
             img_name = os.path.basename(img_path)
@@ -320,7 +279,7 @@ class ModelPredictor:
                 all_core_runs.append(core_run)
 
         # Export final vers Excel
-        self.export_core_runs_to_excel(all_core_runs, "batch_analysis")
+        ee.export_core_runs_to_excel(all_core_runs, "batch_analysis", self.output_path)
 
     def get_methods(self):
         """
@@ -407,7 +366,7 @@ class Fracture:
         self.distance_m = self.distance_px * pixel_to_meter_ratio
         self.length_m = self.length_px * pixel_to_meter_ratio
 
-# Fonctions globales, ne pas modifier
+# Fonctions globales, ne pas modifier TODO mettre dans un nouveau fichier à pars
 def bbox_contains_point(bbox, point):
     """
     Vérifie si un point (x, y) se trouve à l'intérieur d'une bbox [x1, y1, x2, y2]
