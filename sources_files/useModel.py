@@ -9,7 +9,7 @@ from sources_files import excelExport as ee
 
 # TODO revoir l'organisation des fonctions/méthodes
 class ModelPredictor:
-    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8, output_path='', project_name='Project COG-25-10'):
+    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8, output_path='', project_name='Project COG-25-12'): # TODO mettre dynamique
         # ----------------------------------Ne pas modifier cette partie-----------------------------------------------#
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -139,12 +139,13 @@ class ModelPredictor:
 
         return self.__run_img_prediction(img_path, class_names)
 
-    def analyze_cores(self, img_path):
+    def analyze_cores(self, img_path, first_run=0.0):
         """
         Auteur : Yohan Sercia \n
         Dernière MAJ : 06-08-2025 \n
         Description : Méthode appelée via "analyze_folder" qui analyse tous les cores dans une image ainsi que leurs
         fractures. \n
+        :param first_run: Paramètre utilisé pour cumuler la profondeur du trou tout au long de l'analyse.
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des fractures, en ordre
         """
@@ -183,6 +184,8 @@ class ModelPredictor:
 
         self.pixel_to_meter_ratio = pixel_to_meter(core_runs_sorted, 0.0635) # TODO pouvoir donner le choix entre HQ, NQ, HQ3 dans l'interface
 
+        last_run = first_run
+
         # Boucle principale qui calcul les mesures cumulées
         for core in core_runs_sorted:
             x1, _, x2, _ = core.bbox
@@ -192,8 +195,8 @@ class ModelPredictor:
             core.x_end_px = cumulative_px + length_px
             core.length_px = length_px
 
-            core.start_m = cumulative_px * self.pixel_to_meter_ratio
-            core.end_m = core.x_end_px * self.pixel_to_meter_ratio
+            core.start_m = first_run + (cumulative_px * self.pixel_to_meter_ratio)
+            core.end_m = first_run + (core.x_end_px * self.pixel_to_meter_ratio)
             core.length_m = length_px * self.pixel_to_meter_ratio
 
             # Associer chaque fracture à son core
@@ -203,10 +206,11 @@ class ModelPredictor:
                     core.add_fracture(fracture)  # méthode unique add_fracture()
 
             cumulative_px += length_px
-
             core.real_core_measure()
 
-        return core_runs_sorted
+            last_run = core.end_m
+
+        return core_runs_sorted, float(last_run)
 
     def analyze_crop_sample(self, img_path):
         # TODO faire un training pour tester cette méthode
@@ -266,13 +270,22 @@ class ModelPredictor:
             return
 
         # Parcourir et analyser chaque image
+        i = 0
+        first_run = 0.0
+        very_first_run = 40.97 # TODO mettre dynamique
         for img_path in image_files:
             print(f"Analyse de l'image : {img_path}")
-            core_runs_sorted = self.analyze_cores(img_path)
-            self.__output_prediction(img_path, self.output_path)
+            if i >= 1:
+                core_runs_sorted, last_run = self.analyze_cores(img_path, first_run)
+                self.__output_prediction(img_path, self.output_path)
+            else:
+                core_runs_sorted, last_run = self.analyze_cores(img_path, very_first_run)
+                self.__output_prediction(img_path, self.output_path)
+            first_run = last_run
+            i += 1
 
 
-            # Ajouter chaque résultat clairement à une liste globale
+            # Ajouter chaque résultat à une liste globale
             img_name = os.path.basename(img_path)
             for core_run in core_runs_sorted:
                 core_run.img_name = img_name  # enregistrer le nom de l'image associée
@@ -365,6 +378,7 @@ class Fracture:
         self.distance_px = self.center_x() - core_bbox[0]
         self.distance_m = self.distance_px * pixel_to_meter_ratio
         self.length_m = self.length_px * pixel_to_meter_ratio
+
 
 # Fonctions globales, ne pas modifier TODO mettre dans un nouveau fichier à pars
 def bbox_contains_point(bbox, point):

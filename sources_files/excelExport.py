@@ -1,6 +1,5 @@
 from sympy.physics.units import length
 
-
 def export_core_runs_to_excel(core_runs, output_name, output_path):
     """
     Auteur : ChatGPT + Yohan Sercia
@@ -19,48 +18,48 @@ def export_core_runs_to_excel(core_runs, output_name, output_path):
     fractures_rows = []
     core_rows = []
 
+    TYPES_WITH_LENGTH = {"broken_core", "fault"}  # largeur des discon seulement pour ceux là
+
     for idx, core in enumerate(core_runs):
         # L'identifiant de run reste indexé dans l’ordre d’apparition par image :
         core_id = f"{core.img_name}_Core_{idx}"
 
         core_base = {
+            "Hole ID": "COG-25-12", # TODO mettre dynamique
             "img_name": core.img_name,
             "core_run_id": core_id,
-            "from": core.start_m,
-            "to": core.end_m,
-            "run_length": core.length_m,
-            "rqd_length": getattr(core, "total_rqd_length", None),
+            "From (m)": core.start_m,
+            "To (m)": core.end_m,
+            "Run (m)": core.length_m,
+            "RQD (m)": getattr(core, "total_rqd_length", None),
             "RQD (%)": getattr(core, "core_rqd", None),
         }
 
-        # ---- Feuille "Core_Runs" : uniquement les colonnes de run (une ligne par run)
+        #  ---Feuille "Geotech"---
         core_rows.append(core_base.copy())
 
-        # ---- Feuille "Fractures" : même format qu’actuellement (core + fractures)
-        TYPES_WITH_LENGTH = {"broken_core", "fault"} # largeur des discon seulement pour ceux là
-
+        # ---Feuille "Discontinuités"---
         if core.fractures:
             for f_idx, f in enumerate(core.fractures):
                 row = {
                     **core_base,
                     " ": " ",  # espacement
                     "fracture_id": f"{core_id}_{f.fracture_type}_{f_idx}",
-                    "fracture_type": f.fracture_type,
-                    "position_m": f.distance_m,
-                    "length_m": f.length_m if f.fracture_type in TYPES_WITH_LENGTH else None,
+                    "Type": f.fracture_type,
+                    "Depth (m)": core.start_m + f.distance_m,
+                    "Length (m)": f.length_m if f.fracture_type in TYPES_WITH_LENGTH else None,
                     "": " ",  # espacement
                 }
-            fractures_rows.append(row)
+                fractures_rows.append(row)
 
         else:
-            # Même logique que ton export actuel : si aucune fracture, on met une ligne "vide"
             row = {
                 **core_base,
                 " ": " ",
                 "fracture_id": None,
-                "fracture_type": None,
-                "position_m": None,
-                "length_m": None,
+                "Type": None,
+                "Depth (m)": None,
+                "Length (m)": None,
                 "": " "
             }
             fractures_rows.append(row)
@@ -70,28 +69,28 @@ def export_core_runs_to_excel(core_runs, output_name, output_path):
 
     # -------- 2.1) Dédupe des runs (Core_Runs) --------
     # On arrondit les flottants utilisés pour la clé de dédup (prévient les petits écarts binaires).
-    for col in ["from", "to", "run_length", "rqd_length", "RQD (%)"]:
+    for col in ["From (m)", "To (m)", "Run (m)", "RQD (m)", "RQD (%)"]:
         if col in cores_df.columns:
             cores_df[col] = cores_df[col].astype(float).round(6)
 
-    dedup_key = ["img_name", "from", "to", "run_length", "rqd_length", "RQD (%)"]
+    dedup_key = ["Hole ID", "img_name", "From (m)", "To (m)", "Run (m)", "RQD (m)", "RQD (%)"]
     cores_df = cores_df.drop_duplicates(subset=dedup_key, keep="first").reset_index(drop=True)
 
     # -------- 2.2) Colonnes pertinentes pour les fractures --------
     fracture_cols = [
+        "Hole ID",
         "img_name",
-        "core_run_id",
         "fracture_id",
-        "fracture_type",
-        "position_m",
-        "length_m",
+        "Type",
+        "Depth (m)",
+        "Length (m)",
     ]
 
     # Re-indexe pour obtenir exactement ces colonnes (celles manquantes seront créées vides)
     fractures_df = fractures_df.reindex(columns=fracture_cols)
 
     # Arrondi léger sur les colonnes numériques
-    for col in ["position_m", "length_m"]:
+    for col in ["Depth (m)", "Length (m)"]:
         if col in fractures_df.columns:
             fractures_df[col] = pd.to_numeric(fractures_df[col], errors="coerce").round(6)
 
@@ -108,13 +107,14 @@ def export_core_runs_to_excel(core_runs, output_name, output_path):
     # -- Core_Runs
     ws_core = wb["Geotech"]
     core_col_widths = {
-        'A': 30,  # img_name
-        'B': 35,  # core_run_id
-        'C': 10,  # from
-        'D': 10,  # to
-        'E': 12,  # run_length
-        'F': 12,  # rqd_length
-        'G': 10,  # RQD (%)
+        'A': 20,  # Hole ID
+        'B': 30,  # img_name
+        'C': 35,  # core_run_id
+        'D': 10,  # from
+        'E': 10,  # to
+        'F': 12,  # run_length
+        'G': 12,  # rqd_length
+        'H': 10,  # RQD (%)
     }
     for col, w in core_col_widths.items():
         ws_core.column_dimensions[col].width = w
@@ -128,19 +128,12 @@ def export_core_runs_to_excel(core_runs, output_name, output_path):
     # -- Fractures
     ws_frac = wb["Discontinuities"]
     frac_col_widths = {
-        'A': 30,  # img_name
-        'B': 35,  # core_run_id
-        'C': 10,  # from
-        'D': 10,  # to
-        'E': 12,  # run_length
-        'F': 12,  # rqd_length
-        'G': 10,  # RQD (%)
-        'H': 3,   # " " (espacement)
-        'I': 42,  # fracture_id
-        'J': 15,  # fracture_type
-        'K': 15,  # position_m
-        'L': 15,  # length_m
-        'M': 3,   # "" (espacement)
+        'A': 20,  # Hole ID
+        'B': 30,  # img_name
+        'C': 40,  # fracture_id
+        'D': 20,  # type
+        'E': 12,  # position
+        'F': 12,  # length
     }
     for col, w in frac_col_widths.items():
         ws_frac.column_dimensions[col].width = w
