@@ -1,11 +1,29 @@
+"""
+Alius Consultation Minière inc.
+====================================
+CRÉÉ PAR:       Yohan Sercia
+CRÉE LE:        JJ-MM-2025
+------------------------------------
+PROJET:         Geotech IA
+DESCRIPTION:    [DESCRIPTION]
+------------------------------------
+DERNIÈRE MAJ:   17-12-2025
+====================================
+"""
+from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2 import model_zoo
 import numpy as np
 import os, cv2, glob, pandas as pd
 from detectron2.utils.visualizer import Visualizer, ColorMode
+from numpy.ma.core import append
 from sympy.printing.pytorch import torch
+
+# Fichiers à importer de 'sources_files'
 from sources_files import excelExport as ee
+from sources_files import methodLinker as mlinker
+from sources_files import utilitiesMethods as utils
 
 # TODO revoir l'organisation des fonctions/méthodes
 class ModelPredictor:
@@ -28,7 +46,6 @@ class ModelPredictor:
         self.output_path = output_path
         self.project_name = project_name
 
-        from sources_files import utilitiesMethods as utils
         self.output_path = utils.make_new_dir(project_name)
 
         #torch.cuda.empty_cache() # vider la cache avant chaque run
@@ -50,9 +67,8 @@ class ModelPredictor:
         Auteur : Yohan Sercia \n
         Dernière MAJ : 06-08-2025 \n
         Description : Méthode privée, permet d'afficher l'image avec les masks de prédictions. Utile pour tests et démo. \n
-        Appelée via "analyze_example". # TODO conjugaison appeler lol, participe passé ?
+        Appelée via "analyze_example".
         :param img_path: Chemin vers l'image à analyser
-        :param class_names: Nom de la ou les classes présentes dans l'annotation
         :return: class_names, class_area, img_name
         """
         img_name = os.path.basename(img_path)
@@ -61,18 +77,28 @@ class ModelPredictor:
         outputs = self.predictor(img)
 
         instances = outputs["instances"].to("cpu") # instances enregistrées dans le buffer du cpu
+        prediction_masks = instances.pred_masks.cpu().numpy()
+        detected_class_indexes = instances.pred_classes.cpu().numpy()
 
-        boxes = instances.pred_boxes.tensor.numpy()
-        #print("boxes: ", boxes)
-        masks = instances.pred_masks.cpu().numpy()
-        classes = instances.pred_classes.cpu().numpy()
+        metadata = MetadataCatalog.get(self.cfg.DATASETS.TRAIN[0])
+        class_catalog = metadata.thing_classes
 
-        class_area = {class_name: 0 for class_name in class_names}
+        for idx, coordinates in enumerate(prediction_masks):
+            class_index = detected_class_indexes[idx]
+            class_name = class_catalog[class_index]
+            class_names.append(class_name)
 
-        for mask, class_id in zip(masks, classes):
-            class_name = class_names[class_id]
-            area_pixels = np.sum(mask)
-            class_area[class_name] += area_pixels
+        print(class_names)
+
+        #masks = instances.pred_masks.cpu().numpy()
+        #classes = instances.pred_classes.cpu().numpy()
+
+        #class_area = {class_name: 0 for class_name in class_names}
+
+        #for mask, class_id in zip(masks, classes):
+        #    class_name = class_names[class_id]
+        #    area_pixels = np.sum(mask)
+        #    class_area[class_name] += area_pixels
 
         # Visualisation du résultat
         v = Visualizer(img[:, :, ::-1], scale=0.3, instance_mode=ColorMode.IMAGE_BW)
@@ -80,8 +106,6 @@ class ModelPredictor:
         cv2.imshow(img_name, out.get_image()[:, :, ::-1])
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
-        return class_names, class_area, img_name
 
     def __output_prediction(self, img_path, output_dir, class_names=None):
         """
@@ -133,13 +157,14 @@ class ModelPredictor:
         :return: Appel de __run_prediction
         """
         print("Ceci est un test")
-        clean_cache() # Libérer la mémoire du GPU AVANT de commencer une analyse.
+        class_names = ["CORE", "JN", "BC", "FLT", "TB", "DK"]
+        utils.clean_cache() # Libérer la mémoire du GPU AVANT de commencer une analyse.
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # !! IMPORTANT de mettre votre 'note de passage' !!
-        class_names = ["core", "joint", "broken_core", "lost_core", "fault"] # Ajoutez toutes les classes présentes sur vos annotations
 
         return self.__run_img_prediction(img_path, class_names)
 
     def analyze_cores(self, img_path, first_run=0.0):
+        # TODO migrer vers APT/APT_CoreLogging_YS.py
         """
         Auteur : Yohan Sercia \n
         Dernière MAJ : 06-08-2025 \n
@@ -149,7 +174,7 @@ class ModelPredictor:
         :param img_path: Chemin vers l'image à analyser
         :return: La position relative des fractures, en ordre
         """
-        clean_cache()
+        utils.clean_cache()
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.75
 
         img = cv2.imread(img_path)
@@ -160,7 +185,7 @@ class ModelPredictor:
         boxes = instances.pred_boxes.tensor.numpy()
         scores = instances.scores.numpy()
 
-        class_names = ["core", "joint", "broken_core", "lost_core", "fault"] # Les classes sont spécifiques à l'entraînement
+        class_names = ["core", "joint", "broken_core", "fault", "table", "disking"] # Les classes sont spécifiques à l'entraînement
 
         # Liste des cores (parent) et des fractures (enfant)
         core_runs = []
@@ -178,11 +203,11 @@ class ModelPredictor:
         Detectron2 tri les données de prédictions en ordre décroissant de taux de confiance, il faut donc faire un tri manuel avant 
         l'export vers Excel
         """
-        core_runs_sorted = sort_cores(core_runs) # Tri des cores de haut en bas et gauche à droite
+        core_runs_sorted = utils.sort_cores(core_runs) # Tri des cores de haut en bas et gauche à droite
 
         cumulative_px = 0 # On commence l'analyse à zéro. La vraie profondeur est ajouté via Excel après
 
-        self.pixel_to_meter_ratio = pixel_to_meter(core_runs_sorted, 0.0635) # TODO pouvoir donner le choix entre HQ, NQ, HQ3 dans l'interface
+        self.pixel_to_meter_ratio = utils.pixel_to_meter(core_runs_sorted, 0.0635) # TODO pouvoir donner le choix entre HQ, NQ, HQ3 dans l'interface
 
         last_run = first_run
 
@@ -201,7 +226,7 @@ class ModelPredictor:
 
             # Associer chaque fracture à son core
             for fracture in fractures:
-                if bbox_contains_point(core.bbox, fracture.center()):
+                if utils.bbox_contains_point(core.bbox, fracture.center()):
                     fracture.compute_distances(core.bbox, self.pixel_to_meter_ratio)
                     core.add_fracture(fracture)  # méthode unique add_fracture()
 
@@ -212,43 +237,8 @@ class ModelPredictor:
 
         return core_runs_sorted, float(last_run)
 
-    def analyze_crop_sample(self, img_path):
-        # TODO faire un training pour tester cette méthode
-        """
-        Auteur : Yohan Sercia \n
-        Dernière MAJ : 06-08-2025 \n
-        Méthode simpliste d'analyse de crop sample du lab \n
-        ** Gracieuseté de ChatGPT, mais ça l'air legit **
-        :param img_path: Chemin vers l'image à analyser
-        """
-        clean_cache()
-        print("Analyzing core sample")
-        #class_names = ["core"]
-        #return self.__run_img_prediction(img_path, class_names)
-        img = cv2.imread(img_path)
-        outputs = self.predictor(img)
-        instances = outputs["instances"].to("cpu")
-
-        if len(instances.pred_masks) == 0:
-            print("Aucun masque détecté, cropping impossible.")
-            return
-
-        mask = instances.pred_masks[0].numpy().astype("uint8")
-        y_coords, x_coords = mask.nonzero()
-        y_min, y_max = y_coords.min(), y_coords.max()
-        x_min, x_max = x_coords.min(), x_coords.max()
-
-        cropped_img = img[y_min:y_max, x_min:x_max]
-
-        output_filename = os.path.splitext(os.path.basename(img_path))[0] + "_cropped.png"
-        cv2.imwrite(output_filename, cropped_img)
-        print(f"Image cropée sauvegardée : {output_filename}")
-
-        cv2.imshow("Cropped Image", cropped_img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
     def analyze_folder(self, folder_path):
+        # TODO migrer vers APT/APT_CoreLogging_YS.py
         """
         Auteur : Yohan Sercia \n
         Dernière MAJ : 06-08-2025 \n
@@ -295,19 +285,20 @@ class ModelPredictor:
         ee.export_core_runs_to_excel(all_core_runs, "batch_analysis", self.output_path)
 
     def get_methods(self):
-        """
-        Accesseur des méthodes d'analyses, ajoutez une référence à votre méthode d'analyse ici afin de pouvoir l'utiliser dans l'interface.
-        :return: Retourne un dictionnaire avec les méthodes d'analyses en clés
-        """
-        return {
-            "Analyze core dataset": self.analyze_folder,
-            "Analyze and crop lab core sample": self.analyze_crop_sample,
+        # Méthode built in:
+        builtins = {
+            "Analyze core dataset": self.analyze_folder, #TODO à implémenter dans APT
             "Test avec image": self.analyze_example,
-            # etc ...
         }
 
+        # Ajoute automatiquement tous les APT du dossier /APT
+        plugins = mlinker.build_apt_callables(model=self)
+
+        # création d'un dictionnaire avec, d'abord, les méthodes built in et ensuite les APT ajoutés
+        return {**builtins, **plugins}
 
 class CoreRun:
+    # TODO migrer vers APT/APT_CoreLogging_YS.py
     """
     S'occupe des attributs d'analyse à l'intérieur d'un core (joint, broken core, lost core et faille)
     """
@@ -353,6 +344,7 @@ class CoreRun:
 
 
 class Fracture:
+    # TODO migrer vers APT/APT_CoreLogging_YS.py
     """
     Gère les attributs d'un joint (point milieu, point centre, boundary box, niveau de confiance).
     """
@@ -378,44 +370,3 @@ class Fracture:
         self.distance_px = self.center_x() - core_bbox[0]
         self.distance_m = self.distance_px * pixel_to_meter_ratio
         self.length_m = self.length_px * pixel_to_meter_ratio
-
-
-# Fonctions globales, ne pas modifier TODO mettre dans un nouveau fichier à pars
-def bbox_contains_point(bbox, point):
-    """
-    Vérifie si un point (x, y) se trouve à l'intérieur d'une bbox [x1, y1, x2, y2]
-    """
-    x1, y1, x2, y2 = bbox # Délimitation de la bbox
-    x, y = point # Point centre du joint (ou d'un autre attribut)
-    return x1 <= x <= x2 and y1 <= y <= y2 # return True si le point est à l'intérieur de la bbox, alors on sait que le joint (ou l'attribut) appartient à cette 'run' (core)
-
-def sort_cores(core_runs):
-    """
-    :param core_runs: Accepte une liste de liste, ex: [[x1, y1, x2, y2], [x1, y1, x2, y2], ...] qui représente tous
-    les bbox des cores
-    :return: Une liste de liste trié en fonction de y1 d'abord suivi de x1.
-    """
-    #return sorted(core_runs, key=lambda core: (core.bbox[0], core.bbox[1]))
-
-    sorted_by_x = sorted(core_runs, key=lambda core: core.bbox[0])
-    return sorted(sorted_by_x, key=lambda core: core.bbox[1]) # gauche à droite, haut en bas
-
-def pixel_to_meter(core_runs_sorted, core_diameter):
-    """
-    Calcul la hauteur (y2-y1) de TOUS les cores dans le dataset et fait la moyenne de cette hauteur.
-    :param core_runs_sorted: Liste des cores triés.
-    :param core_diameter: Diamètre du core à analyser (NQ, HQ, etc). Utiliser comme mesure de référence
-    :return: Le ratio de conversion pixel<->mètre
-    """
-    d_core = core_diameter
-    heights = [core.bbox[3] - core.bbox[1] for core in core_runs_sorted]
-    d_average = sum(heights) / len(heights) # moyenne
-
-    return d_core / d_average
-
-def clean_cache():
-    """
-    Vide la mémoire allouée à CUDA. Important d'appeler cette fonction au début de chaque méthode d'analyse. \n
-    Est une fonction stand alone au cas où on voudrait ajouter quelque chose d'autre.
-    """
-    torch.cuda.empty_cache()

@@ -373,11 +373,13 @@ class ModelUserFrame(ctk.CTkFrame):
     def run_selected_method(self):
         if self.img_path: # Si une image est selectionnée
             analysis_function = self.methods_dict[self.selected_method] # on trouve notre méthode dans le dict avec la clé 'self.selected_method'
-            output = analysis_function(self.img_path)
+            #output = analysis_function(self.img_path)
+            analysis_function(self.img_path)
 
         elif self.folder_path:
             analysis_function = self.methods_dict[self.selected_method]
-            output = analysis_function(self.folder_path)
+            #output = analysis_function(self.folder_path)
+            analysis_function(self.folder_path)
 
             # ecrire code pour choix dynamique des fonctions, voir le stack overflow
 

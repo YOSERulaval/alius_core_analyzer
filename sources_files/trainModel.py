@@ -16,7 +16,19 @@ from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog, DatasetCatalog
 from detectron2.structures import BoxMode
 
+from detectron2.evaluation import DatasetEvaluators, COCOEvaluator, inference_on_dataset
+from detectron2.data import build_detection_test_loader
+
 from detectron2.data.datasets import register_coco_instances, load_coco_json
+from tools.train_net import build_evaluator
+
+class MyTrainer(DefaultTrainer):
+    @classmethod
+    def build_evaluator(cls, cfg, dataset_name, output_folder=None):
+        if output_folder is None:
+            output_folder = os.path.join(cfg.OUTPUT_DIR, "eval")
+        os.makedirs(output_folder, exist_ok=True)
+        return DatasetEvaluators([COCOEvaluator(dataset_name, cfg, False, output_folder)])
 
 class ModelTrainer:
     def __init__(self, num_iterations, num_classes, roihead_batch_size, real_batch_size,
@@ -25,10 +37,12 @@ class ModelTrainer:
 
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
 
+        # Training et evaluation
         self.cfg.DATASETS.TRAIN = ("my_dataset_train",)
-        self.cfg.DATASETS.TEST = ()
+        self.cfg.DATASETS.TEST = ("my_dataset_val",)
+        self.cfg.TEST.EVAL_PERIOD = 100 # TODO faire varier
 
-        self.cfg.DATALOADER.NUM_WORKERS = 4
+        self.cfg.DATALOADER.NUM_WORKERS = 2
 
         self.cfg.MODEL.DEVICE = model_device
         self.cfg.MODEL.ROI_HEADS.NUM_CLASSES = num_classes
@@ -38,7 +52,7 @@ class ModelTrainer:
         #self.cfg.INPUT.MASK_FORMAT = "polygon" # ajouté pour tests 23-07-2025
 
         self.cfg.SOLVER.MAX_ITER = num_iterations
-        self.cfg.SOLVER.CHECKPOINT_PERIOD = 1000
+        self.cfg.SOLVER.CHECKPOINT_PERIOD = 500
         self.cfg.SOLVER.STEPS = []
         #self.cfg.SOLVER.REFERENCE_WORLD_SIZE = 1 # number of workers (GPUs) this config is meant to train with. ! n'est pas implémenté encore !
         self.cfg.SOLVER.BASE_LR = learning_rate
@@ -61,8 +75,18 @@ class ModelTrainer:
         """
 
     def begin_training(self, coco_path, dataset_path, model_name):
+        # Configuration des paramètres d'évaluation avant de débuter l'entraînement
+        split_coco_annotations(
+            coco_json_path=coco_path,
+            train_json_path="machine_learning_model/datasets/core_datasets/json_files/coco_train.json", # Nom du nouveau fichier json qui sera créer pour l'entraînement
+            val_json_path="machine_learning_model/datasets/core_datasets/json_files/coco_val.json",  # Nom du nouveau fichier json qui sera créer pour l'évaluation
+            split_ratio=0.8
+        )
+
         # Assignations des méta-données à un dataset dynamiquement
-        register_coco_instances("my_dataset_train", {}, coco_path, dataset_path)
+        #register_coco_instances("my_dataset_train", {}, coco_path, dataset_path) # TODO mettre OO ready
+        register_coco_instances("my_dataset_train", {}, "machine_learning_model/datasets/core_datasets/json_files/coco_train.json", dataset_path)
+        register_coco_instances("my_dataset_val", {}, "machine_learning_model/datasets/core_datasets/json_files/coco_val.json", dataset_path)
 
         # On cherche (et trouve) le sous fichier "trained_models", sinon on le créé
         #root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -75,9 +99,71 @@ class ModelTrainer:
 
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=False)
 
-        trainer = DefaultTrainer(self.cfg)
+        #trainer = DefaultTrainer(self.cfg)
+        trainer = MyTrainer(self.cfg)
+        #DefaultTrainer.test(evaluators=)
         trainer.resume_or_load(resume=False)
         trainer.train()
+
+def split_coco_annotations(coco_json_path, train_json_path, val_json_path, split_ratio=0.8):
+    import json
+    import random
+    import os
+    import copy
+
+    with open(coco_json_path, 'r') as f:
+        coco_data = json.load(f)
+
+    images = coco_data.get("images", [])
+    annotations = coco_data.get("annotations", [])
+    categories = coco_data.get("categories", [])
+
+    # Champs optionnels du format COCO officiel
+    info = coco_data.get("info", {})
+    licenses = coco_data.get("licenses", [])
+
+    # Mélanger les images puis couper 80/20 (ou split_ratio)
+    shuffled = images[:]  # copie
+    random.shuffle(shuffled)
+    split_index = int(len(shuffled) * split_ratio)
+
+    train_images = shuffled[:split_index]
+    val_images = shuffled[split_index:]
+
+    train_ids = {img["id"] for img in train_images}
+    val_ids = {img["id"] for img in val_images}
+
+    train_annotations = [ann for ann in annotations if ann["image_id"] in train_ids]
+    val_annotations = [ann for ann in annotations if ann["image_id"] in val_ids]
+
+    # Construire les fichiers JSON
+    train_data = {
+        "info": copy.deepcopy(info),
+        "licenses": copy.deepcopy(licenses),
+        "images": train_images,
+        "annotations": train_annotations,
+        "categories": coco_data["categories"]
+    }
+    val_data = {
+        "info": copy.deepcopy(info),
+        "licenses": copy.deepcopy(licenses),
+        "images": val_images,
+        "annotations": val_annotations,
+        "categories": coco_data["categories"]
+    }
+
+    # Créer les dossiers si besoin
+    os.makedirs(os.path.dirname(train_json_path), exist_ok=True)
+    os.makedirs(os.path.dirname(val_json_path), exist_ok=True)
+
+    with open(train_json_path, 'w') as f:
+        json.dump(train_data, f)
+    with open(val_json_path, 'w') as f:
+        json.dump(val_data, f)
+
+    print(f"✅ Dataset divisé : {len(train_images)} images train, {len(val_images)} images val.")
+
+
 
 """
 # Paths des datasets

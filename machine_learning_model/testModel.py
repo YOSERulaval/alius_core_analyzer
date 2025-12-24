@@ -5,7 +5,9 @@ from sources_files import trainModel as tm
 
 # import some common detectron2 utilities
 from detectron2.utils.visualizer import ColorMode
-
+"""
+!!Fichier pour archive seulement!!
+"""
 # Inference should use the config with parameters that are used in training
 # cfg now already contains everything we've set previously. We changed it a little bit for inference:
 tm.cfg.MODEL.WEIGHTS = tm.os.path.join(tm.cfg.OUTPUT_DIR, "model_final.pth")  # path to the model we just trained
