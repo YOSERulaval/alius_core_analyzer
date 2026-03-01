@@ -27,7 +27,7 @@ from sources_files import utilitiesMethods as utils
 
 # TODO revoir l'organisation des fonctions/méthodes
 class ModelPredictor:
-    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8, output_path='', project_name='Project COG-25-12'): # TODO mettre dynamique
+    def __init__(self, model_dir,  num_classes, confidence_thresh=0.8, output_path='', project_name='Diego_Project COG-25-12'): # TODO mettre dynamique
         # ----------------------------------Ne pas modifier cette partie-----------------------------------------------#
         self.cfg = get_cfg()
         self.cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -157,7 +157,7 @@ class ModelPredictor:
         :return: Appel de __run_prediction
         """
         print("Ceci est un test")
-        class_names = ["CORE", "JN", "BC", "FLT", "TB", "DK"]
+        class_names = ["BTS_sample", "TCS_UCS_sample"]
         utils.clean_cache() # Libérer la mémoire du GPU AVANT de commencer une analyse.
         self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7  # !! IMPORTANT de mettre votre 'note de passage' !!
 

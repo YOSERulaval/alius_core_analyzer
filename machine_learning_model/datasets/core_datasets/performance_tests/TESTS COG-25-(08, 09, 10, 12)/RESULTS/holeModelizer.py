@@ -9,11 +9,11 @@ import matplotlib.pyplot as plt
 
 # === FICHIERS & PARAMS ===
 excel_file_real = "NOV-002 Core logging YS - Courvan 13-07-2025.xlsx"  # excel loggé manuellement
-excel_file_predicted = "Test avec modèle Charlie/COG-25-12 (predicted).xlsx"  # excel prédit par le modèle
+excel_file_predicted = "Test avec modèle Diego/COG-25-09 (predicted).xlsx"  # excel prédit par le modèle
 
 geotech_sheet = "Geotech"            # onglet avec les runs
 disc_sheet    = "Discontinuities"    # onglet avec les discontinuités
-hole_of_interest = "COG-25-12"
+hole_of_interest = "COG-25-09"
 
 # noms de colonnes
 hole_col = "Hole ID"

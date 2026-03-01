@@ -12,7 +12,7 @@ DERNIÈRE MAJ:   17-12-2025
 ====================================
 """
 import os, cv2
-
+import numpy as np
 from sources_files import methodLinker as mlinker
 from sources_files import utilitiesMethods as utils
 
@@ -27,12 +27,16 @@ class SPFormatterAPT(mlinker.Method):
         if not os.path.isfile(img_path):
             raise FileNotFoundError(img_path)
 
-        return self._crop_core_sample(img_path)
+        return self._bg_core_sample(img_path)
 
 
-    def _crop_core_sample(self, img_path):
+    def _bg_core_sample(self, img_path):
+        """
+        Lecture d'une seule image pour l'instant
+        :param img_path:
+        :return:
+        """
         print("[SPFormatter] Analyzing core sample")
-
         img = cv2.imread(img_path)
 
         outputs = self.model.predictor(img) # Appel propre au ModelPredictor
@@ -42,14 +46,17 @@ class SPFormatterAPT(mlinker.Method):
             print("[SPFormatter] Aucun sample détecté.")
             return None
 
-        mask = instances.pred_masks[0].numpy().astype("uint8")
-        y, x = mask.nonzero()
-        cropped_img = img[y.min():y.max(), x.min():x.max()]
+        mask = instances.pred_masks["core_sample"].numpy()
+        rgba = np.dstack([img, mask.astype(np.uint8) * 255])
+
+        bg_removed_img = img.copy()
+        bg_removed_img[~mask] = rgba
+
 
         filename = os.path.splitext(os.path.basename(img_path))[0]
-        out_path = os.path.join(output_dir, f"{filename}_cropped.png")
+        out_path = os.path.join(output_dir, f"{filename}_no_bg.png")
 
-        cv2.imwrite(out_path, cropped_img)
+        cv2.imwrite(out_path, bg_removed_img)
         print(f"[SPFormatter] Image sauvegardée : {out_path}")
 
         return out_path
