@@ -1,4 +1,4 @@
-from sources_files import interface
+from src import interface
 
 def main():
     interface.ctk.set_appearance_mode("light")

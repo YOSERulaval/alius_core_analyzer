@@ -16,12 +16,12 @@ DERNIÈRE MAJ:   17-12-2025
 !! CECI EST UN TEMPLATE !!
 ==========================
 APT = Algorithme Post Traitement
-Créer un fichier .py pour votre APT à l'intérieur de 'root/APT/ '
+Créez un fichier .py pour votre APT à l'intérieur de 'root/APT/ '
 
 Normalement, l'interface va pouvoir trouver votre APT automatiquement. Pour fonctionnement, voir 'useModel.py -> ModelPredictor.get_methods(self)'
 """
 
-from sources_files import methodLinker as mlinker
+from src import methodLinker as mlinker
 
 class MonAPT(mlinker.Method):
     name = "APT - [NOM DE L'APT] ([INITIALS])" # TODO
